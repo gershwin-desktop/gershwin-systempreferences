@@ -145,6 +145,7 @@
 - (void) loadThemes: (id)sender
 {
   NSArray		*array;
+  GSTheme		*theme = [GSTheme loadThemeNamed: @"GNUstep.theme"];
 
   /* Avoid [NSMutableSet set] that confuses GCC 3.3.3.  It seems to confuse
    * this static +(id)set method with the instance -(void)set, so it would
@@ -161,6 +162,12 @@
   NSString		*name;
   NSButtonCell		*cell;
   unsigned		count = 0;
+
+  /* Ensure the first cell contains the default theme.
+   */
+  cell = [matrix cellAtRow: 0 column: count++];
+  [cell setImage: [theme icon]];
+  [cell setTitle: [theme name]];
 
   /* Go through all the themes in the standard locations and find their names.
    */
