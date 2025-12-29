@@ -168,19 +168,29 @@ static SystemPreferences *systemPreferences = nil;
       NSView *view = [prefsBox contentView];
 
       if (view != iconsView) {
-	NSPreferencePaneUnselectReply reply = [currentPane shouldUnselect];
+        if (currentPane == nil) {
+          // pane was unselected asynchronously, switch to icons view
+          [(NSBox *)prefsBox setContentView: iconsView];
+        } else {
+          NSPreferencePaneUnselectReply reply = [currentPane shouldUnselect];
     
-	if (reply == NSUnselectCancel) {
-	  return NO;
-	} else if (reply == NSUnselectLater) {
-	  pendingAction = @selector(closeAfterPaneUnselection);
-	  return NO;
-	}
+          if (reply == NSUnselectCancel) {
+            return NO;
+          } else if (reply == NSUnselectLater) {
+            pendingAction = @selector(closeAfterPaneUnselection);
+            return NO;
+          } else {
+            // unselect now
+            [currentPane willUnselect];
+            [currentPane didUnselect];
+            currentPane = nil;
+            [(NSBox *)prefsBox setContentView: iconsView];
+          }
+        }
       }
 
-      [self showAllButtAction: nil];
+      [self updateDefaults];
     }
-  [self updateDefaults];
   return YES;
 }
 
@@ -305,6 +315,10 @@ static SystemPreferences *systemPreferences = nil;
 
 - (void)closeAfterPaneUnselection
 {
+  [currentPane willUnselect];
+  [(NSBox *)prefsBox setContentView: iconsView];
+  [currentPane didUnselect];
+  currentPane = nil;
   [window performClose: self];
 }
 
