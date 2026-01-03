@@ -119,8 +119,8 @@ static SystemPreferences *systemPreferences = nil;
       		   | NSMiniaturizableWindowMask;
   NSString *bundlesDir;
   
-  // Create window programmatically
-  window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 200, 592, 414)
+  // Create window
+  window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 180, 592, 434)
                                        styleMask: style
                                          backing: NSBackingStoreRetained
                                            defer: NO];
@@ -168,7 +168,15 @@ static SystemPreferences *systemPreferences = nil;
   // Connect search field to icons view
   [searchField setTarget: iconsView];
   [searchField setAction: @selector(searchFieldChanged:)];
-  [[searchField cell] setSendsActionOnEndEditing: YES];
+  // Send action continuously (on every change) rather than only at end editing
+  [[searchField cell] setSendsActionOnEndEditing: NO];
+  // Observe changes in the search field to update the Show All button immediately
+  [nc addObserver: self
+         selector: @selector(searchFieldDidChange:)
+             name: NSControlTextDidChangeNotification
+           object: nil];
+  // Set self as delegate so we can intercept ESC (cancelOperation:) when typing in the search box
+  [searchField setDelegate: self];
 
   bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) lastObject];
   bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
@@ -326,9 +334,25 @@ static SystemPreferences *systemPreferences = nil;
   [currentPane willSelect];
   [(NSBox *)prefsBox setContentView: view];
   [currentPane didSelect];
-    
+
+  // Hide the search field while a pref pane is shown
+  if (searchField) {
+    [searchField setHidden: YES];
+  }
+
+  // Update window title to match the selected pref pane's label
+  {
+    NSDictionary *dict = [[pane bundle] infoDictionary];
+    NSString *lstr = [dict objectForKey: @"NSPrefPaneIconLabel"];
+    if (lstr && [lstr length] > 0) {
+      [window setTitle: lstr];
+    } else {
+      [window setTitle: @"System Preferences"];
+    }
+  }
+
   [window setFrame: wr display: YES animate: YES];
-  
+
   [showAllButt setEnabled: YES];
 }
 
@@ -349,6 +373,13 @@ static SystemPreferences *systemPreferences = nil;
     } else if (reply == NSUnselectLater) {
       pendingAction = @selector(showIconsView);
     }
+  } else {
+    // If we're already showing the icons view, clear the search and show everything
+    if (searchField) {
+      [searchField setStringValue: @""];
+    }
+    [iconsView showAllIcons];
+    [showAllButt setEnabled: NO];
   }
 }
 
@@ -368,9 +399,14 @@ static SystemPreferences *systemPreferences = nil;
     // When returning to the icons view, clear search and show everything
     if (searchField) {
       [searchField setStringValue: @""];
+      // Make the search field visible again when the main icons view is shown
+      [searchField setHidden: NO];
     }
     [iconsView showAllIcons];
     [currentPane didUnselect];
+
+    // Reset the window title when showing the icons view
+    [window setTitle: @"System Preferences"];
 
     [window setFrame: wr display: YES animate: YES];
 
@@ -387,12 +423,52 @@ static SystemPreferences *systemPreferences = nil;
   }  
 }
 
+- (void)searchFieldDidChange:(NSNotification *)notif
+{
+  NSString *s = [searchField stringValue];
+
+  if (s && [s length] > 0) {
+    [showAllButt setEnabled: YES];
+  } else {
+    // If there's no search text, only enable Show All if a pane is selected
+    [showAllButt setEnabled: (currentPane != nil)];
+  }
+
+  // Forward to icons view to trigger filtering immediately
+  if ([iconsView respondsToSelector: @selector(searchFieldChanged:)]) {
+    [iconsView searchFieldChanged: searchField];
+  }
+}
+
+- (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)commandSelector
+{
+  // Intercept ESC (cancelOperation:) when typing in controls (like the search field)
+  if (commandSelector == @selector(cancelOperation:)) {
+    [self showAll: control];
+    return YES; // handled
+  }
+
+  return NO; // let the system handle other commands
+}
+
+- (void)cancelOperation:(id)sender
+{
+  // Also handle cancelOperation: in case it's sent directly up the responder chain
+  [self showAll: sender];
+}
+
 - (void)closeAfterPaneUnselection
 {
   [currentPane willUnselect];
   [(NSBox *)prefsBox setContentView: iconsView];
   [currentPane didUnselect];
   currentPane = nil;
+  // Ensure search field is visible again when the icons view is shown
+  if (searchField) {
+    [searchField setHidden: NO];
+    [searchField setStringValue: @""];
+  }
+  [window setTitle: @"System Preferences"];
   [window performClose: self];
 }
 

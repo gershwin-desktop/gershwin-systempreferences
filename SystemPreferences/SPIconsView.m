@@ -6,10 +6,12 @@
 #define ICONW 56
 #define ICONH 64
 #define CONTENT_MARGIN 12
-#define HEADER_HEIGHT 16
+// TOP_MARGIN controls the top whitespace before the first header/separator. Set so
+#define TOP_MARGIN 0
+#define HEADER_HEIGHT 14
 #define HEADER_ICON_GAP 6
 #define CATEGORY_SPACING 6
-#define ICON_HORIZONTAL_SPACING 12
+#define ICON_HORIZONTAL_SPACING 18
 #define ICON_VERTICAL_SPACING 4
 
 static NSArray<NSString *> *preferredCategoryOrder(void)
@@ -151,7 +153,8 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
   NSRect bounds = [self bounds];
   // clear previous separators
   [separatorsY removeAllObjects];
-  float y = bounds.size.height - CONTENT_MARGIN;
+  // Use TOP_MARGIN so the first separator is positioned to match toolbar vertical spacing
+  float y = bounds.size.height - TOP_MARGIN;
   float width = fmaxf(bounds.size.width - CONTENT_MARGIN * 2, ICONW);
   int iconsPerRow = MAX(1, (int)((width + ICON_HORIZONTAL_SPACING) / (ICONW + ICON_HORIZONTAL_SPACING)));
   NSArray *categories = [self orderedVisibleCategoryNames];
@@ -167,13 +170,14 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
 
     NSTextField *header = [self headerForCategory: category];
     float headerHeight = HEADER_HEIGHT;
-    float headerY = y - headerHeight;
+    // Shift category labels 3px downwards for improved visual spacing
+    float headerY = y - headerHeight - 3;
     header.frame = NSMakeRect(CONTENT_MARGIN, headerY, width, headerHeight);
     y = headerY - HEADER_ICON_GAP;
 
     // For the very first category, add a separator ABOVE the header
     if (cidx == 0) {
-      float topSeparatorY = headerY + headerHeight + (HEADER_ICON_GAP / 2.0);
+      float topSeparatorY = headerY + headerHeight + (HEADER_ICON_GAP );
       [separatorsY addObject: @(topSeparatorY)];
     }
 
@@ -260,8 +264,9 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
 
   for (NSNumber *ny in separatorsY) {
     CGFloat y = [ny floatValue];
-    [path moveToPoint: NSMakePoint(CONTENT_MARGIN, y)];
-    [path lineToPoint: NSMakePoint(bounds.size.width - CONTENT_MARGIN, y)];
+    // Draw separators spanning fully to window edges (extend by CONTENT_MARGIN to cover any left/right insets)
+    [path moveToPoint: NSMakePoint(-CONTENT_MARGIN, y)];
+    [path lineToPoint: NSMakePoint(bounds.size.width + CONTENT_MARGIN, y)];
   }
 
   [path stroke];
