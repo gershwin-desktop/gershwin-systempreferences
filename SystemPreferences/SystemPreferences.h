@@ -25,6 +25,7 @@
  */
 
 #import <Foundation/Foundation.h>
+#import <AppKit/AppKit.h>
 #import "PreferencePanes.h"
 
 @class NSWindow;
@@ -34,11 +35,9 @@
 @interface SystemPreferences : NSObject
 {
   NSWindow *window;
-  
-  IBOutlet NSWindow *win;
-  IBOutlet NSBox *controlsBox;
-  IBOutlet id showAllButt;
-  IBOutlet NSBox *prefsBox;
+  id showAllButt;
+  NSBox *prefsBox;
+  NSTextField *searchField;  // Search field in main window
   
   NSMutableArray *panes;
   id currentPane;

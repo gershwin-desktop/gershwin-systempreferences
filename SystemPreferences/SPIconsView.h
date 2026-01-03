@@ -32,12 +32,18 @@
 
 @interface SPIconsView : NSView
 {
-  NSMutableArray *icons;
+  NSMutableDictionary *allIconsByCategory;
+  NSMutableDictionary *visibleIconsByCategory; // Keep track of visible icons per category
+  NSMutableDictionary *categoryHeaders;
 }
 
-- (void)addIcon:(SPIcon *)icon;
+- (void)addIcon:(SPIcon *)icon forCategory:(NSString *)category;
 
 - (void)tile;
+
+- (void)filterIconsWithString:(NSString *)searchString;
+
+- (void)showAllIcons;
 		 
 @end
 

@@ -29,7 +29,31 @@
 #import "SPIconsView.h"
 #import "SPIcon.h"
 
-static NSString *nibName = @"SystemPreferences.gorm";
+static NSArray<NSDictionary *> *kCategoryRules = nil;
+
+static void ensureCategoryRules(void)
+{
+  if (kCategoryRules == nil) {
+   kCategoryRules = [[NSArray alloc] initWithObjects:
+    @{ @"name": @"Personal",
+      @"keywords": @[ @"appearance", @"desktop", @"dock", @"language", @"text", @"security", @"spotlight", @"accessibility", @"fonts", @"colors", @"themes", @"global", @"screensaver" ],
+      @"identifiers": @[] },
+    @{ @"name": @"Hardware",
+      @"keywords": @[ @"cd", @"dvd", @"display", @"energy", @"keyboard", @"mouse", @"trackpad", @"printer", @"sound", @"displays" ],
+      @"identifiers": @[] },
+    @{ @"name": @"Internet & Wireless",
+      @"keywords": @[ @"network", @"internet", @"sharing", @"modem", @"wireless", @"wifi", @"bluetooth" ],
+      @"identifiers": @[] },
+    @{ @"name": @"System",
+      @"keywords": @[ @"accounts", @"date", @"time", @"startup", @"machine", @"timezone", @"system", @"defaults", @"modifier", @"volumes", @"filesystem", @"global" ],
+      @"identifiers": @[] },
+    nil];
+  }
+}
+
+@interface SystemPreferences ()
+- (NSString *)categoryForPane:(NSPreferencePane *)pane label:(NSString *)label;
+@end
 
 static SystemPreferences *systemPreferences = nil;
 
@@ -51,6 +75,9 @@ static SystemPreferences *systemPreferences = nil;
   RELEASE (window);
   RELEASE (panes);
   RELEASE (iconsView);
+  RELEASE (prefsBox);
+  RELEASE (searchField);
+  RELEASE (showAllButt);
     
   [super dealloc];
 }
@@ -83,29 +110,65 @@ static SystemPreferences *systemPreferences = nil;
 }
 
 - (void)applicationWillFinishLaunching:(NSNotification *)aNotification
-{
+{  // If we've already built the toolbar and search field (this can be called more than once), skip
+  if (searchField != nil && prefsBox != nil) {
+    return;
+  }
   NSUInteger style = NSTitledWindowMask
 		   | NSClosableWindowMask
       		   | NSMiniaturizableWindowMask;
   NSString *bundlesDir;
   
-  if ([NSBundle loadNibNamed: nibName owner: self] == NO) {
-    NSLog(@"failed to load %@!", nibName);
-    [NSApp terminate: self];
-  } 
-
+  // Create window programmatically
   window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 200, 592, 414)
                                        styleMask: style
                                          backing: NSBackingStoreRetained
                                            defer: NO];
-  [window setContentView: [win contentView]];
-  [window setTitle: [win title]]; 
+  [window setTitle: @"System Preferences"];
   [window setDelegate: self];
-  DESTROY (win);
+  
+  // Create main content view
+  NSView *contentView = [[NSView alloc] initWithFrame: [[window contentView] frame]];
+  [window setContentView: contentView];
+  RELEASE(contentView);
+  
+  // Build a toolbar row with the Show All button on the left and the search field on the right
+  NSRect contentBounds = [[window contentView] bounds];
+  const CGFloat toolbarHeight = 40.0;
+  NSView *topBar = [[NSView alloc] initWithFrame: NSMakeRect(0, contentBounds.size.height - toolbarHeight, contentBounds.size.width, toolbarHeight)];
+  [topBar setAutoresizingMask: NSViewWidthSizable | NSViewMinYMargin];
+  [[window contentView] addSubview: topBar];
+
+  showAllButt = [[NSButton alloc] initWithFrame: NSMakeRect(12, (toolbarHeight - 24.0) / 2.0, 88, 24)];
+  [showAllButt setTitle: @"Show All"];
+  [showAllButt setButtonType: NSMomentaryPushInButton];
+  [showAllButt setTarget: self];
+  [showAllButt setAction: @selector(showAll:)];
+  [showAllButt setEnabled: NO];
+  [showAllButt setAutoresizingMask: NSViewMaxXMargin | NSViewMinYMargin];
+  [topBar addSubview: showAllButt];
+
+  searchField = [[NSTextField alloc] initWithFrame: NSMakeRect(contentBounds.size.width - 12 - 200, (toolbarHeight - 20.0) / 2.0, 200, 20)];
+  [searchField setPlaceholderString: @"Search"];  
+  [searchField setAutoresizingMask: NSViewMinXMargin | NSViewMinYMargin];
+  [topBar addSubview: searchField];
+  [topBar release];
+
+  // Create preferences box for icons (NO BORDER like reference)
+  prefsBox = [[NSBox alloc] initWithFrame: NSMakeRect(0, 0, contentBounds.size.width, contentBounds.size.height - toolbarHeight)];
+  [prefsBox setTitle: @""];
+  [prefsBox setBorderType: NSNoBorder];  // Remove border to match reference
+  [prefsBox setAutoresizingMask: NSViewWidthSizable | NSViewHeightSizable];
+  [[window contentView] addSubview: prefsBox];
     
   [prefsBox setAutoresizesSubviews: NO];  
   iconsView = [[SPIconsView alloc] initWithFrame: [[prefsBox contentView] frame]];
   [(NSBox *)prefsBox setContentView: iconsView];
+  
+  // Connect search field to icons view
+  [searchField setTarget: iconsView];
+  [searchField setAction: @selector(searchFieldChanged:)];
+  [[searchField cell] setSendsActionOnEndEditing: YES];
 
   bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) lastObject];
   bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
@@ -145,9 +208,10 @@ static SystemPreferences *systemPreferences = nil;
     NSImage *image = [[NSImage alloc] initWithContentsOfFile: ipath];
     NSString *lstr = [dict objectForKey: @"NSPrefPaneIconLabel"];
     SPIcon *icon;
+    NSString *category = [self categoryForPane: pane label: lstr];
     
     icon = [[SPIcon alloc] initForPane: pane iconImage: image labelString: lstr];
-    [iconsView addIcon: icon];
+    [iconsView addIcon: icon forCategory: category];
     RELEASE (icon);
     RELEASE (image);
     RELEASE (pool);
@@ -268,6 +332,11 @@ static SystemPreferences *systemPreferences = nil;
   [showAllButt setEnabled: YES];
 }
 
+- (void)showAll:(id)sender
+{
+  [self showAllButtAction:sender];
+}
+
 - (IBAction)showAllButtAction:(id)sender
 {
   NSView *view = [prefsBox contentView];
@@ -296,6 +365,11 @@ static SystemPreferences *systemPreferences = nil;
 
     [currentPane willUnselect];
     [(NSBox *)prefsBox setContentView: iconsView];
+    // When returning to the icons view, clear search and show everything
+    if (searchField) {
+      [searchField setStringValue: @""];
+    }
+    [iconsView showAllIcons];
     [currentPane didUnselect];
 
     [window setFrame: wr display: YES animate: YES];
@@ -325,6 +399,54 @@ static SystemPreferences *systemPreferences = nil;
 - (void)updateDefaults
 {
   [window saveFrameUsingName: @"systemprefs"];
+}
+
+- (NSString *)categoryForPane:(NSPreferencePane *)pane label:(NSString *)label
+{
+  NSDictionary *info = [[pane bundle] infoDictionary];
+  NSString *category = [info objectForKey: @"NSPrefPaneCategory"];
+
+  if ([category length] > 0) {
+    return category;
+  }
+
+  ensureCategoryRules();
+
+  NSString *lowerLabel = [[label lowercaseString] stringByTrimmingCharactersInSet: [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (lowerLabel == nil) {
+    lowerLabel = @"";
+  }
+
+  NSString *bundleID = [[[pane bundle] bundleIdentifier] lowercaseString];
+  if (bundleID == nil) {
+    bundleID = @"";
+  }
+
+  for (NSDictionary *rule in kCategoryRules) {
+    NSArray *keywords = [rule objectForKey: @"keywords"];
+    for (NSString *keyword in keywords) {
+      if ([keyword length] == 0) {
+        continue;
+      }
+
+      if ([lowerLabel rangeOfString: keyword].location != NSNotFound) {
+        return [rule objectForKey: @"name"];
+      }
+    }
+
+    NSArray *identifiers = [rule objectForKey: @"identifiers"];
+    for (NSString *identifier in identifiers) {
+      if ([identifier length] == 0) {
+        continue;
+      }
+
+      if ([bundleID rangeOfString: identifier].location != NSNotFound) {
+        return [rule objectForKey: @"name"];
+      }
+    }
+  }
+
+  return @"Other";
 }
 
 @end
