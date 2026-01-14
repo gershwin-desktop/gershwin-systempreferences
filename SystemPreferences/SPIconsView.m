@@ -21,7 +21,7 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
     order = [[NSArray alloc] initWithObjects:
       @"Personal",
       @"Hardware",
-      @"Internet & Wireless",
+      @"Network",
       @"System",
       @"Other",
       nil];
@@ -32,6 +32,7 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
 @interface SPIconsView ()
 {
   NSMutableArray *separatorsY;
+  BOOL isTiling;
 }
 - (NSMutableArray *)mutableArrayForCategory:(NSString *)category
                                   dictionary:(NSMutableDictionary *)dict
@@ -60,6 +61,7 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
     visibleIconsByCategory = [NSMutableDictionary new];
     categoryHeaders = [NSMutableDictionary new];
     separatorsY = [NSMutableArray new];
+    isTiling = NO;
   }
 
   return self;
@@ -150,6 +152,13 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
 
 - (void)tile
 {
+  // Prevent infinite recursion
+  if (isTiling) {
+    return;
+  }
+  
+  isTiling = YES;
+  
   NSRect bounds = [self bounds];
   // clear previous separators
   [separatorsY removeAllObjects];
@@ -221,8 +230,8 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
     if (desiredContentHeight > contentSize.height) {
       NSSize newContent = NSMakeSize(contentSize.width, desiredContentHeight);
       [win setContentSize: newContent];
-      // ensure layout recalculates with the new size
-      [self tile];
+      // Window resize will trigger setFrame/resizeWithOldSuperviewSize
+      // which will call tile again, but the guard above prevents recursion
     }
   }
 
@@ -232,6 +241,8 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
     }
   }
 
+  isTiling = NO;
+  
   [self setNeedsDisplay: YES];
 }
 

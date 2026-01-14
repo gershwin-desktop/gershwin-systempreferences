@@ -41,7 +41,7 @@ static void ensureCategoryRules(void)
     @{ @"name": @"Hardware",
       @"keywords": @[ @"cd", @"dvd", @"display", @"energy", @"keyboard", @"mouse", @"trackpad", @"printer", @"sound", @"displays" ],
       @"identifiers": @[] },
-    @{ @"name": @"Internet & Wireless",
+    @{ @"name": @"Network",
       @"keywords": @[ @"network", @"internet", @"sharing", @"modem", @"wireless", @"wifi", @"bluetooth" ],
       @"identifiers": @[] },
     @{ @"name": @"System",
