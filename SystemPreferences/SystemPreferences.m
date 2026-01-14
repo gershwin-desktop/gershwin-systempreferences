@@ -110,8 +110,12 @@ static SystemPreferences *systemPreferences = nil;
 }
 
 - (void)applicationWillFinishLaunching:(NSNotification *)aNotification
-{  // If we've already built the toolbar and search field (this can be called more than once), skip
+{  
+  NSLog(@"SystemPreferences: applicationWillFinishLaunching starting");
+  
+  // If we've already built the toolbar and search field (this can be called more than once), skip
   if (searchField != nil && prefsBox != nil) {
+    NSLog(@"SystemPreferences: Already initialized, skipping");
     return;
   }
   NSUInteger style = NSTitledWindowMask
@@ -119,6 +123,7 @@ static SystemPreferences *systemPreferences = nil;
       		   | NSMiniaturizableWindowMask;
   NSString *bundlesDir;
   
+  NSLog(@"SystemPreferences: Creating window");
   // Create window
   window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 180, 592, 434)
                                        styleMask: style
@@ -127,6 +132,7 @@ static SystemPreferences *systemPreferences = nil;
   [window setTitle: @"System Preferences"];
   [window setDelegate: self];
   
+  NSLog(@"SystemPreferences: Creating content view");
   // Create main content view
   NSView *contentView = [[NSView alloc] initWithFrame: [[window contentView] frame]];
   [window setContentView: contentView];
@@ -135,6 +141,7 @@ static SystemPreferences *systemPreferences = nil;
   // Build a toolbar row with the Show All button on the left and the search field on the right
   NSRect contentBounds = [[window contentView] bounds];
   const CGFloat toolbarHeight = 40.0;
+  NSLog(@"SystemPreferences: Creating toolbar");
   NSView *topBar = [[NSView alloc] initWithFrame: NSMakeRect(0, contentBounds.size.height - toolbarHeight, contentBounds.size.width, toolbarHeight)];
   [topBar setAutoresizingMask: NSViewWidthSizable | NSViewMinYMargin];
   [[window contentView] addSubview: topBar];
@@ -154,6 +161,7 @@ static SystemPreferences *systemPreferences = nil;
   [topBar addSubview: searchField];
   [topBar release];
 
+  NSLog(@"SystemPreferences: Creating preferences box");
   // Create preferences box for icons (NO BORDER like reference)
   prefsBox = [[NSBox alloc] initWithFrame: NSMakeRect(0, 0, contentBounds.size.width, contentBounds.size.height - toolbarHeight)];
   [prefsBox setTitle: @""];
@@ -162,6 +170,7 @@ static SystemPreferences *systemPreferences = nil;
   [[window contentView] addSubview: prefsBox];
     
   [prefsBox setAutoresizesSubviews: NO];  
+  NSLog(@"SystemPreferences: Creating icons view");
   iconsView = [[SPIconsView alloc] initWithFrame: [[prefsBox contentView] frame]];
   [(NSBox *)prefsBox setContentView: iconsView];
   
@@ -178,20 +187,26 @@ static SystemPreferences *systemPreferences = nil;
   // Set self as delegate so we can intercept ESC (cancelOperation:) when typing in the search box
   [searchField setDelegate: self];
 
+  NSLog(@"SystemPreferences: Loading preference panes from directories");
   bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) lastObject];
   bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
+  NSLog(@"SystemPreferences: Adding panes from %@", bundlesDir);
   [self addPanesFromDirectory: bundlesDir];
 
   bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSLocalDomainMask, YES) lastObject];
   bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
+  NSLog(@"SystemPreferences: Adding panes from %@", bundlesDir);
   [self addPanesFromDirectory: bundlesDir];
 
   bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSSystemDomainMask, YES) lastObject];
   bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
+  NSLog(@"SystemPreferences: Adding panes from %@", bundlesDir);
   [self addPanesFromDirectory: bundlesDir];
   
+  NSLog(@"SystemPreferences: Sorting panes");
   [panes sortUsingSelector: @selector(comparePane:)];
   
+  NSLog(@"SystemPreferences: applicationWillFinishLaunching complete");
   [showAllButt setEnabled: NO];
 }
 
@@ -199,33 +214,48 @@ static SystemPreferences *systemPreferences = nil;
 {
   unsigned i;
   
+  NSLog(@"SystemPreferences: applicationDidFinishLaunching starting");
+  
+  NSLog(@"SystemPreferences: Setting window frame");
   [window setFrameUsingName: @"systemprefs"];
+  NSLog(@"SystemPreferences: Making window key and front");
   [window makeKeyAndOrderFront: nil];
+  
+  NSLog(@"SystemPreferences: Processing %lu panes", (unsigned long)[panes count]);
   
   for (i = 0; i < [panes count]; i++) {
     CREATE_AUTORELEASE_POOL (pool);
     NSPreferencePane *pane = [panes objectAtIndex: i];
     NSBundle *bundle = [pane bundle];
     NSDictionary *dict = [bundle infoDictionary];
+    
+    NSLog(@"SystemPreferences: Processing pane %u", i);
+    
     /* 
       All the following objects are guaranted to exist because they are 
       checked in the -initWithBundle: method of the NSPreferencePane class.    
     */
     NSString *iname = [dict objectForKey: @"NSPrefPaneIconFile"];
     NSString *ipath = [bundle pathForResource: iname ofType: nil];
+    NSLog(@"SystemPreferences: Loading icon from %@", ipath);
     NSImage *image = [[NSImage alloc] initWithContentsOfFile: ipath];
     NSString *lstr = [dict objectForKey: @"NSPrefPaneIconLabel"];
     SPIcon *icon;
     NSString *category = [self categoryForPane: pane label: lstr];
     
+    NSLog(@"SystemPreferences: Creating icon for %@", lstr);
     icon = [[SPIcon alloc] initForPane: pane iconImage: image labelString: lstr];
+    NSLog(@"SystemPreferences: Adding icon to view");
     [iconsView addIcon: icon forCategory: category];
     RELEASE (icon);
     RELEASE (image);
     RELEASE (pool);
+    NSLog(@"SystemPreferences: Pane %u processed", i);
   }
 
+  NSLog(@"SystemPreferences: Tiling icons view");
   [iconsView tile];
+  NSLog(@"SystemPreferences: applicationDidFinishLaunching complete");
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)app
