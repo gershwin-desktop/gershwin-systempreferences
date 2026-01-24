@@ -32,7 +32,7 @@
 @class NSBox;
 @class SPIconsView;
 
-@interface SystemPreferences : NSObject
+@interface SystemPreferences : NSObject <NSTextFieldDelegate>
 {
   NSWindow *window;
   id showAllButt;

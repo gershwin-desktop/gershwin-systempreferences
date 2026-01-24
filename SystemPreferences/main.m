@@ -45,7 +45,7 @@ int main(int argc, char **argv, char** env)
 NSMenuItem *addItemToMenu(NSMenu *menu, NSString *str, 
 																NSString *comm, NSString *sel, NSString *key)
 {
-	NSMenuItem *item = [menu addItemWithTitle: NSLocalizedString(str, comm)
+	NSMenuItem *item = (NSMenuItem *)[menu addItemWithTitle: NSLocalizedString(str, comm)
 												action: NSSelectorFromString(sel) keyEquivalent: key]; 
 	return item;
 }

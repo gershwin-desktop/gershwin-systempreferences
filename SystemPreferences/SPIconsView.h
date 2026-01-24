@@ -41,6 +41,8 @@
 
 - (void)tile;
 
+- (void)searchFieldChanged:(id)sender;
+
 - (void)filterIconsWithString:(NSString *)searchString;
 
 - (void)showAllIcons;
