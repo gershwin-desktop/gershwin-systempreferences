@@ -229,7 +229,14 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
     NSSize contentSize = [[win contentView] frame].size;
     if (desiredContentHeight > contentSize.height) {
       NSSize newContent = NSMakeSize(contentSize.width, desiredContentHeight);
-      [win setContentSize: newContent];
+      // Resize the window frame while preserving the window's top-left position so
+      // the window does not visually move on screen when the content grows.
+      NSRect frame = [win frame];
+      CGFloat titleAndBorder = frame.size.height - contentSize.height;
+      CGFloat newFrameHeight = newContent.height + titleAndBorder;
+      NSPoint topLeft = NSMakePoint(frame.origin.x, frame.origin.y + frame.size.height);
+      NSRect newFrame = NSMakeRect(frame.origin.x, topLeft.y - newFrameHeight, frame.size.width, newFrameHeight);
+      [win setFrame: newFrame display: NO animate: NO];
       // Window resize will trigger setFrame/resizeWithOldSuperviewSize
       // which will call tile again, but the guard above prevents recursion
     }

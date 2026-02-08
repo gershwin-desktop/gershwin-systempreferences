@@ -216,8 +216,8 @@ static SystemPreferences *systemPreferences = nil;
   
   NSLog(@"SystemPreferences: applicationDidFinishLaunching starting");
   
-  NSLog(@"SystemPreferences: Setting window frame");
-  [window setFrameUsingName: @"systemprefs"];
+  NSLog(@"SystemPreferences: Skipping saved window frame restore (window will not be moved)");
+  // Intentionally do not restore saved frame to avoid moving the window on startup.
   NSLog(@"SystemPreferences: Making window key and front");
   [window makeKeyAndOrderFront: nil];
   
@@ -354,12 +354,7 @@ static SystemPreferences *systemPreferences = nil;
 - (void)clickOnIconOfPane:(id)pane
 {
   NSView *view = [pane loadMainView];
-  float diffh = [view frame].size.height - [iconsView frame].size.height;
-  NSRect wr = [window frame];
-  
-  wr.size.height += diffh;
-  wr.origin.y -= diffh;
-  
+
   currentPane = pane;
   [currentPane willSelect];
   [(NSBox *)prefsBox setContentView: view];
@@ -381,7 +376,7 @@ static SystemPreferences *systemPreferences = nil;
     }
   }
 
-  [window setFrame: wr display: YES animate: YES];
+  // Do not resize or animate the window when switching panes.
 
   [showAllButt setEnabled: YES];
 }
@@ -418,12 +413,6 @@ static SystemPreferences *systemPreferences = nil;
   NSView *view = [prefsBox contentView];
   
   if (view != iconsView) {  
-    float diffh = [iconsView frame].size.height - [view frame].size.height;
-    NSRect wr = [window frame];
-
-    wr.size.height += diffh;
-    wr.origin.y -= diffh;
-
     [currentPane willUnselect];
     [(NSBox *)prefsBox setContentView: iconsView];
     // When returning to the icons view, clear search and show everything
@@ -438,7 +427,7 @@ static SystemPreferences *systemPreferences = nil;
     // Reset the window title when showing the icons view
     [window setTitle: @"System Preferences"];
 
-    [window setFrame: wr display: YES animate: YES];
+    // Do not resize or animate the window when returning to icons view.
 
     currentPane = nil;
     [showAllButt setEnabled: NO];
@@ -499,12 +488,13 @@ static SystemPreferences *systemPreferences = nil;
     [searchField setStringValue: @""];
   }
   [window setTitle: @"System Preferences"];
-  [window performClose: self];
+  // Close without animation
+  [window orderOut: self];
 }
 
 - (void)updateDefaults
 {
-  [window saveFrameUsingName: @"systemprefs"];
+  // Intentionally do not save the window frame to avoid moving it on future launches.
 }
 
 - (NSString *)categoryForPane:(NSPreferencePane *)pane label:(NSString *)label
