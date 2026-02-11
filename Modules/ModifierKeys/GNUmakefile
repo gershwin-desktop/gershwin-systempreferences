@@ -9,7 +9,7 @@ ModifierKeys_HAS_RESOURCE_BUNDLE = yes
 
 OBJCFLAGS += -Wall
 
-ModifierKeys_OBJC_FILES = ModifierKeys.m 
+ModifierKeys_OBJC_FILES = ModifierKeys.m ModifierKeySearchField.m
 
 ModifierKeys_PRINCIPAL_CLASS = ModifierKeys
 
@@ -27,4 +27,3 @@ include $(GNUSTEP_MAKEFILES)/bundle.make
 
 -include GNUmakefile.preamble
 -include GNUmakefile.postamble
-
