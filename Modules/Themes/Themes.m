@@ -67,54 +67,112 @@
 {
   NSButtonCell	*cell = [sender selectedCell];
   NSString	*name = [cell title];
-  GSTheme       *selectedTheme;
-  NSArray       *authors;
-  NSString      *authorsString;
-  NSString      *license;
-  NSImage       *previewImage;
-  NSString      *themeDetails;
-  NSString	*previewPath;
-
-  selectedTheme = [GSTheme loadThemeNamed: name];
+  NSFileManager *mgr = [NSFileManager defaultManager];
 
   [nameField setStringValue: name];
-  authors = [selectedTheme authors];
 
-  authorsString = @"";
+  /* Read theme metadata directly from the bundle's Info.plist so that we
+   * do NOT call [GSTheme loadThemeNamed:].  Loading a theme instantiates
+   * its class and injects method overrides (class_addMethod) into live
+   * classes — which can crash NSMenu and other shared objects even when
+   * the theme is only being previewed, not applied.
+   */
+
+  NSString *themeBundlePath = nil;
+
+  if ([name isEqualToString: @"GNUstep"])
+    {
+      /* The default theme has no separate bundle on disk. */
+      [authorsView setString: @""];
+      [versionField setStringValue: @""];
+      [licenseField setStringValue: @""];
+      [detailsView setString: @"Default GNUstep theme"];
+
+      NSString *previewPath = [[self bundle] pathForResource: @"gnustep_preview_128" ofType: @"tiff"];
+      NSImage *previewImage = previewPath
+        ? [[[NSImage alloc] initWithContentsOfFile: previewPath] autorelease]
+        : nil;
+      [previewView setImage: previewImage];
+      return;
+    }
+
+  /* Locate the theme bundle without loading it. */
+  NSString *themeBundleName = [name stringByAppendingPathExtension: @"theme"];
+  NSEnumerator *libEnum = [NSSearchPathForDirectoriesInDomains
+    (NSAllLibrariesDirectory, NSAllDomainsMask, YES) objectEnumerator];
+  NSString *libPath;
+  while ((libPath = [libEnum nextObject]) != nil)
+    {
+      NSString *candidate = [[libPath stringByAppendingPathComponent: @"Themes"]
+                                      stringByAppendingPathComponent: themeBundleName];
+      BOOL isDir = NO;
+      if ([mgr fileExistsAtPath: candidate isDirectory: &isDir] && isDir)
+        {
+          themeBundlePath = candidate;
+          break;
+        }
+    }
+
+  if (themeBundlePath == nil)
+    {
+      [authorsView setString: @""];
+      [versionField setStringValue: @""];
+      [licenseField setStringValue: @""];
+      [detailsView setString: @"Theme not found"];
+      NSString *noPreview = [[self bundle] pathForResource: @"no_preview" ofType: @"tiff"];
+      [previewView setImage: noPreview
+        ? [[[NSImage alloc] initWithContentsOfFile: noPreview] autorelease]
+        : nil];
+      return;
+    }
+
+  /* Read Info.plist directly — do not call [NSBundle bundleWithPath:] followed
+   * by principalClass, as that would load the bundle code.
+   */
+  NSString *plistPath = [themeBundlePath stringByAppendingPathComponent: @"Resources/Info-gnustep.plist"];
+  if (![mgr fileExistsAtPath: plistPath])
+    {
+      plistPath = [themeBundlePath stringByAppendingPathComponent: @"Info.plist"];
+    }
+  NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile: plistPath];
+
+  /* Authors */
+  NSArray *authors = [info objectForKey: @"GSThemeAuthors"];
+  NSString *authorsString = @"";
   if ([authors count] > 0)
     authorsString = [authors componentsJoinedByString: @"\n"];
   [authorsView setString: authorsString];
-  [versionField setStringValue: [selectedTheme versionString]];
-  license = [selectedTheme license];
-  if (license == nil)
-    license = @"";
-  [licenseField setStringValue:license];
 
-  themeDetails = [[[selectedTheme bundle] infoDictionary] objectForKey:@"GSThemeDetails"];
-  if (themeDetails == nil)
-    themeDetails = @"";
-  [detailsView setString:themeDetails];
+  /* Version */
+  NSString *version = [info objectForKey: @"GSThemeVersion"];
+  [versionField setStringValue: version ? version : @""];
 
-  if (YES == [[selectedTheme name] isEqualToString: @"GNUstep"])
+  /* License */
+  NSString *license = [info objectForKey: @"GSThemeLicense"];
+  [licenseField setStringValue: license ? license : @""];
+
+  /* Details */
+  NSString *themeDetails = [info objectForKey: @"GSThemeDetails"];
+  [detailsView setString: themeDetails ? themeDetails : @""];
+
+  /* Preview image */
+  NSString *previewName = [info objectForKey: @"GSThemePreview"];
+  NSString *previewPath = nil;
+  if ([previewName length] > 0)
     {
-      previewPath = [[self bundle] pathForResource: @"gnustep_preview_128" ofType: @"tiff"];  
-    }
-  else
-    {
-      previewPath = [[selectedTheme infoDictionary]
-	objectForKey: @"GSThemePreview"];
-      if (nil != previewPath)
-	{
-          previewPath = [[selectedTheme bundle]
-	    pathForResource: previewPath ofType: nil];  
-	}
+      previewPath = [[themeBundlePath stringByAppendingPathComponent: @"Resources"]
+                                      stringByAppendingPathComponent: previewName];
+      if (![mgr fileExistsAtPath: previewPath])
+        previewPath = nil;
     }
   if (previewPath == nil)
     {
-      previewPath = [[self bundle] pathForResource: @"no_preview" ofType: @"tiff"];  
+      previewPath = [[self bundle] pathForResource: @"no_preview" ofType: @"tiff"];
     }
-  previewImage = [[NSImage alloc] initWithContentsOfFile:previewPath];
-  [previewImage autorelease];
+
+  NSImage *previewImage = previewPath
+    ? [[[NSImage alloc] initWithContentsOfFile: previewPath] autorelease]
+    : nil;
   [previewView setImage: previewImage];
 }
 
@@ -144,14 +202,7 @@
 
 - (void) loadThemes: (id)sender
 {
-  NSArray		*array;
-  GSTheme		*theme = [GSTheme loadThemeNamed: @"GNUstep.theme"];
-
-  /* Avoid [NSMutableSet set] that confuses GCC 3.3.3.  It seems to confuse
-   * this static +(id)set method with the instance -(void)set, so it would
-   * refuse to compile saying
-   * GSTheme.m:1565: error: void value not ignored as it ought to be
-   */
+  /* Avoid [NSMutableSet set] that confuses GCC 3.3.3. */
   NSMutableSet		*set = AUTORELEASE([NSMutableSet new]);
 
   NSString		*selected = RETAIN([[matrix selectedCell] title]);
@@ -164,10 +215,14 @@
   unsigned		count = 0;
 
   /* Ensure the first cell contains the default theme.
+   * Do NOT call loadThemeNamed: here — that instantiates the theme class
+   * and injects method overrides into live classes via class_addMethod,
+   * which can corrupt NSMenu and other shared classes even without
+   * applying the theme.  Instead, just display the name.
    */
   cell = [matrix cellAtRow: 0 column: count++];
-  [cell setImage: [theme icon]];
-  [cell setTitle: [theme name]];
+  [cell setImage: [NSImage imageNamed: @"GNUstep"]];
+  [cell setTitle: @"GNUstep"];
 
   /* Go through all the themes in the standard locations and find their names.
    */
@@ -194,28 +249,66 @@
 	}
     }
 
-  /* Sort theme names alphabetically, and add each theme to the matrix.
+  /* Sort theme names alphabetically and add each to the matrix.
+   * Only read the icon from the bundle's Resources without fully loading
+   * the theme, so no method overrides are injected.
    */
-  array = [[set allObjects] sortedArrayUsingSelector:
+  NSArray *array = [[set allObjects] sortedArrayUsingSelector:
     @selector(caseInsensitiveCompare:)];
   enumerator = [array objectEnumerator];
   while ((name = [enumerator nextObject]) != nil)
     {
-      GSTheme	*loaded;
+      /* Locate the theme bundle without instantiating the theme class. */
+      NSString *themeBundleName = [name stringByAppendingPathExtension: @"theme"];
+      NSString *themePath = nil;
+      NSEnumerator *libEnum = [NSSearchPathForDirectoriesInDomains
+        (NSAllLibrariesDirectory, NSAllDomainsMask, YES) objectEnumerator];
+      NSString *libPath;
+      while ((libPath = [libEnum nextObject]) != nil)
+        {
+          NSString *candidate = [[libPath stringByAppendingPathComponent: @"Themes"]
+                                          stringByAppendingPathComponent: themeBundleName];
+          BOOL isDir = NO;
+          if ([mgr fileExistsAtPath: candidate isDirectory: &isDir] && isDir)
+            {
+              themePath = candidate;
+              break;
+            }
+        }
 
-      loaded = [GSTheme loadThemeNamed: name];
-      if (loaded != nil)
-	{
-	  if (count >= existing)
-	    {
-	      [matrix addColumn];
-	      existing++;
-	    }
-	  cell = [matrix cellAtRow: 0 column: count];
-	  [cell setImage: [loaded icon]];
-	  [cell setTitle: [loaded name]];
-	  count++;
-	}
+      if (themePath != nil)
+        {
+          /* Try to load a preview/icon image from the bundle resources
+           * without calling [bundle load] or [GSTheme loadThemeNamed:].
+           */
+          NSImage *themeIcon = nil;
+          NSString *iconPath = [[themePath stringByAppendingPathComponent: @"Resources"]
+                                           stringByAppendingPathComponent: @"icon.tiff"];
+          if ([mgr fileExistsAtPath: iconPath])
+            {
+              themeIcon = [[[NSImage alloc] initWithContentsOfFile: iconPath] autorelease];
+            }
+          if (themeIcon == nil)
+            {
+              /* Try png variant */
+              iconPath = [[themePath stringByAppendingPathComponent: @"Resources"]
+                                     stringByAppendingPathComponent: @"icon.png"];
+              if ([mgr fileExistsAtPath: iconPath])
+                {
+                  themeIcon = [[[NSImage alloc] initWithContentsOfFile: iconPath] autorelease];
+                }
+            }
+
+          if (count >= existing)
+            {
+              [matrix addColumn];
+              existing++;
+            }
+          cell = [matrix cellAtRow: 0 column: count];
+          [cell setImage: themeIcon];  /* nil is OK — cell will just have no image */
+          [cell setTitle: name];
+          count++;
+        }
     }
 
   /* Empty any unused cells.

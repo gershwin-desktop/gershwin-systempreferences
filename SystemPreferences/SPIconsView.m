@@ -255,16 +255,25 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
 
 - (void)setFrame:(NSRect)frameRect
 {
+  NSRect oldFrame = [self frame];
   [super setFrame: frameRect];
 
-  if ([self superview]) {
+  // Only re-tile if the size actually changed
+  if ([self superview]
+      && (oldFrame.size.width != frameRect.size.width
+          || oldFrame.size.height != frameRect.size.height)) {
     [self tile];
   }
 }
 
 - (void)resizeWithOldSuperviewSize:(NSSize)oldBoundsSize
 {
-  [self tile];
+  NSSize current = [self frame].size;
+  // Only re-tile if our size actually changed
+  if (current.width != oldBoundsSize.width
+      || current.height != oldBoundsSize.height) {
+    [self tile];
+  }
 }
 
 - (void)drawRect:(NSRect)rect
@@ -347,12 +356,11 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
       [visibleIconsByCategory setObject: copy forKey: category];
       for (SPIcon *icon in copy) {
         [icon setHidden: NO];
-        if ([icon respondsToSelector: @selector(tile)]) {
-          [icon tile];
-        }
       }
     }
   }
+  // Single tile call handles all icon layout; individual icon tile
+  // calls are done inside tile() after setFrame: on each icon.
   [self tile];
 }
 

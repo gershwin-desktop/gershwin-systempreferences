@@ -25,9 +25,16 @@
  */
 
 #import <AppKit/AppKit.h>
+#import <dispatch/dispatch.h>
 #import "SystemPreferences.h"
 #import "SPIconsView.h"
 #import "SPIcon.h"
+
+// Private libdispatch API for integrating the main queue with a foreign run loop.
+// Without this, blocks dispatched to dispatch_get_main_queue() from background
+// threads are never executed under GNUstep's NSRunLoop.
+extern int _dispatch_get_main_queue_handle_4CF(void);
+extern void _dispatch_main_queue_callback_4CF(void *msg);
 
 static NSArray<NSDictionary *> *kCategoryRules = nil;
 
@@ -56,6 +63,7 @@ static void ensureCategoryRules(void)
 @end
 
 static SystemPreferences *systemPreferences = nil;
+static NSFileHandle *dispatchMainQueueHandle = nil;
 
 @implementation SystemPreferences
 
@@ -109,21 +117,60 @@ static SystemPreferences *systemPreferences = nil;
   return self;
 }
 
-- (void)applicationWillFinishLaunching:(NSNotification *)aNotification
-{  
-  NSLog(@"SystemPreferences: applicationWillFinishLaunching starting");
-  
-  // If we've already built the toolbar and search field (this can be called more than once), skip
-  if (searchField != nil && prefsBox != nil) {
-    NSLog(@"SystemPreferences: Already initialized, skipping");
+- (void)_setupDispatchMainQueueDrain
+{
+  // GNUstep's NSRunLoop does not automatically drain libdispatch's main queue.
+  // We watch the dispatch main queue's file descriptor and call the drain
+  // callback whenever work is available.  This makes dispatch_async to the
+  // main queue work correctly from background threads / GCD.
+  int fd = _dispatch_get_main_queue_handle_4CF();
+  if (fd < 0) {
+    NSDebugLog(@"SystemPreferences: WARNING - could not get dispatch main queue fd");
     return;
   }
+
+  NSFileHandle *fh = [[NSFileHandle alloc] initWithFileDescriptor:fd
+                                                   closeOnDealloc:NO];
+  // Keep the file handle alive for the lifetime of the app
+  dispatchMainQueueHandle = [fh retain];
+
+  [[NSNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(_drainDispatchMainQueue:)
+             name:NSFileHandleDataAvailableNotification
+           object:fh];
+  [fh waitForDataInBackgroundAndNotify];
+  [fh release];
+  NSDebugLog(@"SystemPreferences: dispatch main queue drain installed (fd=%d)", fd);
+}
+
+- (void)_drainDispatchMainQueue:(NSNotification *)notif
+{
+  _dispatch_main_queue_callback_4CF(NULL);
+
+  // Re-arm the notification
+  NSFileHandle *fh = [notif object];
+  [fh waitForDataInBackgroundAndNotify];
+}
+
+- (void)applicationWillFinishLaunching:(NSNotification *)aNotification
+{
+  NSDebugLog(@"SystemPreferences: applicationWillFinishLaunching starting");
+
+  // If we've already built the toolbar and search field (this can be called more than once), skip
+  if (searchField != nil && prefsBox != nil) {
+    NSDebugLog(@"SystemPreferences: Already initialized, skipping");
+    return;
+  }
+
+  // Integrate libdispatch main queue with GNUstep's NSRunLoop
+  [self _setupDispatchMainQueueDrain];
   NSUInteger style = NSTitledWindowMask
 		   | NSClosableWindowMask
       		   | NSMiniaturizableWindowMask;
   NSString *bundlesDir;
   
-  NSLog(@"SystemPreferences: Creating window");
+  NSDebugLog(@"SystemPreferences: Creating window");
   // Create window
   window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 180, 592, 434)
                                        styleMask: style
@@ -132,7 +179,7 @@ static SystemPreferences *systemPreferences = nil;
   [window setTitle: @"System Preferences"];
   [window setDelegate: self];
   
-  NSLog(@"SystemPreferences: Creating content view");
+  NSDebugLog(@"SystemPreferences: Creating content view");
   // Create main content view
   NSView *contentView = [[NSView alloc] initWithFrame: [[window contentView] frame]];
   [window setContentView: contentView];
@@ -141,7 +188,7 @@ static SystemPreferences *systemPreferences = nil;
   // Build a toolbar row with the Show All button on the left and the search field on the right
   NSRect contentBounds = [[window contentView] bounds];
   const CGFloat toolbarHeight = 40.0;
-  NSLog(@"SystemPreferences: Creating toolbar");
+  NSDebugLog(@"SystemPreferences: Creating toolbar");
   NSView *topBar = [[NSView alloc] initWithFrame: NSMakeRect(0, contentBounds.size.height - toolbarHeight, contentBounds.size.width, toolbarHeight)];
   [topBar setAutoresizingMask: NSViewWidthSizable | NSViewMinYMargin];
   [[window contentView] addSubview: topBar];
@@ -161,7 +208,7 @@ static SystemPreferences *systemPreferences = nil;
   [topBar addSubview: searchField];
   [topBar release];
 
-  NSLog(@"SystemPreferences: Creating preferences box");
+  NSDebugLog(@"SystemPreferences: Creating preferences box");
   // Create preferences box for icons (NO BORDER like reference)
   prefsBox = [[NSBox alloc] initWithFrame: NSMakeRect(0, 0, contentBounds.size.width, contentBounds.size.height - toolbarHeight)];
   [prefsBox setTitle: @""];
@@ -170,7 +217,7 @@ static SystemPreferences *systemPreferences = nil;
   [[window contentView] addSubview: prefsBox];
     
   [prefsBox setAutoresizesSubviews: NO];  
-  NSLog(@"SystemPreferences: Creating icons view");
+  NSDebugLog(@"SystemPreferences: Creating icons view");
   iconsView = [[SPIconsView alloc] initWithFrame: [[prefsBox contentView] frame]];
   [(NSBox *)prefsBox setContentView: iconsView];
   
@@ -187,26 +234,26 @@ static SystemPreferences *systemPreferences = nil;
   // Set self as delegate so we can intercept ESC (cancelOperation:) when typing in the search box
   [searchField setDelegate: self];
 
-  NSLog(@"SystemPreferences: Loading preference panes from directories");
+  NSDebugLog(@"SystemPreferences: Loading preference panes from directories");
   bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) lastObject];
   bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
-  NSLog(@"SystemPreferences: Adding panes from %@", bundlesDir);
+  NSDebugLog(@"SystemPreferences: Adding panes from %@", bundlesDir);
   [self addPanesFromDirectory: bundlesDir];
 
   bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSLocalDomainMask, YES) lastObject];
   bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
-  NSLog(@"SystemPreferences: Adding panes from %@", bundlesDir);
+  NSDebugLog(@"SystemPreferences: Adding panes from %@", bundlesDir);
   [self addPanesFromDirectory: bundlesDir];
 
   bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSSystemDomainMask, YES) lastObject];
   bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
-  NSLog(@"SystemPreferences: Adding panes from %@", bundlesDir);
+  NSDebugLog(@"SystemPreferences: Adding panes from %@", bundlesDir);
   [self addPanesFromDirectory: bundlesDir];
   
-  NSLog(@"SystemPreferences: Sorting panes");
+  NSDebugLog(@"SystemPreferences: Sorting panes");
   [panes sortUsingSelector: @selector(comparePane:)];
   
-  NSLog(@"SystemPreferences: applicationWillFinishLaunching complete");
+  NSDebugLog(@"SystemPreferences: applicationWillFinishLaunching complete");
   [showAllButt setEnabled: NO];
 }
 
@@ -214,14 +261,14 @@ static SystemPreferences *systemPreferences = nil;
 {
   unsigned i;
   
-  NSLog(@"SystemPreferences: applicationDidFinishLaunching starting");
+  NSDebugLog(@"SystemPreferences: applicationDidFinishLaunching starting");
   
-  NSLog(@"SystemPreferences: Skipping saved window frame restore (window will not be moved)");
+  NSDebugLog(@"SystemPreferences: Skipping saved window frame restore (window will not be moved)");
   // Intentionally do not restore saved frame to avoid moving the window on startup.
-  NSLog(@"SystemPreferences: Making window key and front");
+  NSDebugLog(@"SystemPreferences: Making window key and front");
   [window makeKeyAndOrderFront: nil];
   
-  NSLog(@"SystemPreferences: Processing %lu panes", (unsigned long)[panes count]);
+  NSDebugLog(@"SystemPreferences: Processing %lu panes", (unsigned long)[panes count]);
   
   for (i = 0; i < [panes count]; i++) {
     CREATE_AUTORELEASE_POOL (pool);
@@ -229,7 +276,7 @@ static SystemPreferences *systemPreferences = nil;
     NSBundle *bundle = [pane bundle];
     NSDictionary *dict = [bundle infoDictionary];
     
-    NSLog(@"SystemPreferences: Processing pane %u", i);
+    NSDebugLog(@"SystemPreferences: Processing pane %u", i);
     
     /* 
       All the following objects are guaranted to exist because they are 
@@ -237,25 +284,25 @@ static SystemPreferences *systemPreferences = nil;
     */
     NSString *iname = [dict objectForKey: @"NSPrefPaneIconFile"];
     NSString *ipath = [bundle pathForResource: iname ofType: nil];
-    NSLog(@"SystemPreferences: Loading icon from %@", ipath);
+    NSDebugLog(@"SystemPreferences: Loading icon from %@", ipath);
     NSImage *image = [[NSImage alloc] initWithContentsOfFile: ipath];
     NSString *lstr = [dict objectForKey: @"NSPrefPaneIconLabel"];
     SPIcon *icon;
     NSString *category = [self categoryForPane: pane label: lstr];
     
-    NSLog(@"SystemPreferences: Creating icon for %@", lstr);
+    NSDebugLog(@"SystemPreferences: Creating icon for %@", lstr);
     icon = [[SPIcon alloc] initForPane: pane iconImage: image labelString: lstr];
-    NSLog(@"SystemPreferences: Adding icon to view");
+    NSDebugLog(@"SystemPreferences: Adding icon to view");
     [iconsView addIcon: icon forCategory: category];
     RELEASE (icon);
     RELEASE (image);
     RELEASE (pool);
-    NSLog(@"SystemPreferences: Pane %u processed", i);
+    NSDebugLog(@"SystemPreferences: Pane %u processed", i);
   }
 
-  NSLog(@"SystemPreferences: Tiling icons view");
+  NSDebugLog(@"SystemPreferences: Tiling icons view");
   [iconsView tile];
-  NSLog(@"SystemPreferences: applicationDidFinishLaunching complete");
+  NSDebugLog(@"SystemPreferences: applicationDidFinishLaunching complete");
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)app
@@ -353,6 +400,25 @@ static SystemPreferences *systemPreferences = nil;
 
 - (void)clickOnIconOfPane:(id)pane
 {
+  // Unselect the previous pane before selecting the new one so that
+  // timers, tasks and other resources are properly cleaned up.
+  if (currentPane != nil && currentPane != pane) {
+    NSPreferencePaneUnselectReply reply = [currentPane shouldUnselect];
+
+    if (reply == NSUnselectCancel) {
+      return; // previous pane refused to unselect
+    } else if (reply == NSUnselectLater) {
+      // Cannot switch yet; remember what we wanted to do
+      // (pendingAction will be invoked by paneUnselectNotification:)
+      pendingAction = NULL; // clear; we cannot easily defer pane-to-pane switch
+      return;
+    }
+
+    [currentPane willUnselect];
+    [currentPane didUnselect];
+    currentPane = nil;
+  }
+
   NSView *view = [pane loadMainView];
 
   currentPane = pane;
@@ -391,8 +457,13 @@ static SystemPreferences *systemPreferences = nil;
   NSView *view = [prefsBox contentView];
 
   if (view != iconsView) {
+    if (currentPane == nil) {
+      // Pane was unselected asynchronously or is missing — just switch back
+      [self showIconsView];
+      return;
+    }
     NSPreferencePaneUnselectReply reply = [currentPane shouldUnselect];
-    
+
     if (reply == NSUnselectNow) {
       [self showIconsView];
     } else if (reply == NSUnselectLater) {
@@ -412,8 +483,12 @@ static SystemPreferences *systemPreferences = nil;
 {
   NSView *view = [prefsBox contentView];
   
-  if (view != iconsView) {  
+  if (view != iconsView) {
     [currentPane willUnselect];
+    // Prepare icon data BEFORE adding the view to the hierarchy,
+    // so the setFrame:/tile triggered by setContentView: already
+    // sees the correct visible icons. This avoids a double tile.
+    [iconsView showAllIcons];
     [(NSBox *)prefsBox setContentView: iconsView];
     // When returning to the icons view, clear search and show everything
     if (searchField) {
@@ -421,7 +496,6 @@ static SystemPreferences *systemPreferences = nil;
       // Make the search field visible again when the main icons view is shown
       [searchField setHidden: NO];
     }
-    [iconsView showAllIcons];
     [currentPane didUnselect];
 
     // Reset the window title when showing the icons view
