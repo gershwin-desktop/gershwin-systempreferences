@@ -28,35 +28,28 @@
 #include <Foundation/Foundation.h>
 #include "PreferencePanes.h"
 
+@class ModifierKeySearchField;
+
 @interface ModifierKeys : NSPreferencePane
 {
   IBOutlet id firstAlternateLabel;
-	IBOutlet id firstAlternatePopUp;
+  IBOutlet ModifierKeySearchField *firstAlternateField;
   IBOutlet id firstCommandLabel;  
-	IBOutlet id firstCommandPopUp;
+  IBOutlet ModifierKeySearchField *firstCommandField;
   IBOutlet id firstControlLabel;  
-	IBOutlet id firstControlPopUp;
+  IBOutlet ModifierKeySearchField *firstControlField;
   
   IBOutlet id secondAlternateLabel;  
-	IBOutlet id secondAlternatePopUp;
+  IBOutlet ModifierKeySearchField *secondAlternateField;
   IBOutlet id secondCommandLabel;  
-	IBOutlet id secondCommandPopUp;
+  IBOutlet ModifierKeySearchField *secondCommandField;
   IBOutlet id secondControlLabel;  
-	IBOutlet id secondControlPopUp;
+  IBOutlet ModifierKeySearchField *secondControlField;
   
   BOOL loaded;
 }
 
-- (void)setItemsForMenu:(id)menu 
-         fromDictionary:(NSDictionary *)dict;
-
-- (id)itemWithRepresentedObject:(id)anobject
-                         inMenu:(id)menu;
-
-- (void)selectItemWithRepresentedObject:(id)anobject
-                                 inMenu:(id)menu;
-
-- (IBAction)popupsAction:(id)sender;
+- (IBAction)searchFieldAction:(id)sender;
 
 @end
 
