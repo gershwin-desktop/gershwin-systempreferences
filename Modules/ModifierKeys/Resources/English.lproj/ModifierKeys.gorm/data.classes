@@ -1,23 +1,43 @@
 {
     "## Comment" = "Do NOT change this file, Gorm maintains it";
-    ModifierKeys = {
+    FirstResponder = {
 	Actions = (
-	    "popupsAction:"
+	    "searchFieldAction:"
+	);
+	Super = NSObject;
+    };
+    ModifierKeySearchField = {
+	Actions = (
 	);
 	Outlets = (
-	    secondControlPopUp,
-	    secondCommandPopUp,
-	    secondAlternatePopUp,
-	    firstControlPopUp,
-	    firstCommandPopUp,
-	    firstAlternatePopUp,
-	    _window,
+	);
+	Super = NSSearchField;
+    };
+    ModifierKeys = {
+	Actions = (
+	    "searchFieldAction:"
+	);
+	Outlets = (
 	    firstAlternateLabel,
+	    firstAlternateField,
 	    firstCommandLabel,
+	    firstCommandField,
 	    firstControlLabel,
-	    secondControlLabel,
+	    firstControlField,
 	    secondAlternateLabel,
-	    secondCommandLabel
+	    secondAlternateField,
+	    secondCommandLabel,
+	    secondCommandField,
+	    secondControlLabel,
+	    secondControlField
+	);
+	Super = NSPreferencePane;
+    };
+    NSPreferencePane = {
+	Actions = (
+	);
+	Outlets = (
+	    "_window"
 	);
 	Super = NSObject;
     };
