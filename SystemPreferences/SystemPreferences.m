@@ -146,6 +146,16 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 
 - (void)_drainDispatchMainQueue:(NSNotification *)notif
 {
+  // Consume the eventfd first so poll() stops spinning on it.
+  // _dispatch_main_queue_callback_4CF drains the queue but does NOT
+  // reset the eventfd counter, keeping it perpetually readable and
+  // causing the run loop's poll() to busy-loop.
+  int fd = _dispatch_get_main_queue_handle_4CF();
+  if (fd >= 0) {
+    uint64_t val;
+    read(fd, &val, sizeof(val));
+  }
+
   _dispatch_main_queue_callback_4CF(NULL);
 
   // Re-arm the notification
