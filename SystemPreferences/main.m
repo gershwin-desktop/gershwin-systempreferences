@@ -84,8 +84,7 @@ void createMenu()
 	RELEASE (menu);
 	addItemToMenu(menu, @"Arrange in Front", @"", @"arrangeInFront:", @"");
 	addItemToMenu(menu, @"Miniaturize Window", @"", @"performMiniaturize:", @"m");
-	// Use orderOut: to close without animation rather than performClose:
-	addItemToMenu(menu, @"Close Window", @"", @"orderOut:", @"w");
+	addItemToMenu(menu, @"Close Window", @"", @"performClose:", @"w");
   [[NSApplication sharedApplication] setWindowsMenu: menu];
 
 	// Services 

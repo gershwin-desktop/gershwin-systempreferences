@@ -182,7 +182,7 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
   
   NSDebugLog(@"SystemPreferences: Creating window");
   // Create window
-  window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 180, 592, 434)
+  window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 180, 651, 434)
                                        styleMask: style
                                          backing: NSBackingStoreRetained
                                            defer: NO];
@@ -572,8 +572,7 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
     [searchField setStringValue: @""];
   }
   [window setTitle: @"System Preferences"];
-  // Close without animation
-  [window orderOut: self];
+  [window close];
 }
 
 - (void)updateDefaults
