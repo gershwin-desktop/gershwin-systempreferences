@@ -27,6 +27,8 @@
 
 @implementation TemplateModule
 
++ (BOOL)isCompatible { return YES; }
+
 - (void)dealloc
 {
 	[super dealloc];

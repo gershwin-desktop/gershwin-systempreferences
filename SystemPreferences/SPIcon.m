@@ -5,6 +5,7 @@
 
 #import "SPIcon.h"
 #import "SystemPreferences.h"
+#import "PreferencePanes.h"
 
 #include <math.h>
 #import <AppKit/AppKit.h>
@@ -71,6 +72,7 @@ static inline double myrintf(double value)
 - (void)mouseDown:(NSEvent *)theEvent
 {
   (void)theEvent;
+  if (disabled) return;
   drawicon = selicon ?: icon;
   [self setNeedsDisplay:YES];
 }
@@ -78,6 +80,12 @@ static inline double myrintf(double value)
 - (void)mouseUp:(NSEvent *)theEvent
 {
   (void)theEvent;
+  if (disabled) {
+    [prefapp performSelector: @selector(showCompatibilityAlertForPane:)
+                 withObject: pane
+                 afterDelay: 0];
+    return;
+  }
   drawicon = icon;
   [self setNeedsDisplay:YES];
   if (prefapp && pane) {
@@ -182,14 +190,15 @@ static inline double myrintf(double value)
         [iconToDraw drawInRect:iconRect
            fromRect:NSZeroRect
           operation:NSCompositeSourceOver
-           fraction:1.0
+           fraction:(disabled ? 0.3 : 1.0)
          respectFlipped:YES
               hints:nil];
   }
 
+  NSColor *textColor = disabled ? [NSColor disabledControlTextColor] : [NSColor labelColor];
   if (labelLines.count) {
     NSDictionary *attributes = @{NSFontAttributeName:[NSFont systemFontOfSize:kLabelFontSize],
-                                 NSForegroundColorAttributeName:[NSColor labelColor]};
+                                 NSForegroundColorAttributeName:textColor};
     CGFloat labelY = NSMinY(iconRect) - kLabelPadding;
     for (NSString *line in labelLines) {
       CGSize textSize = [line sizeWithAttributes:attributes];
@@ -198,6 +207,17 @@ static inline double myrintf(double value)
       labelY -= (textSize.height + kLabelLineSpacing);
     }
   }
+}
+
+- (void)setDisabled:(BOOL)flag
+{
+  disabled = flag;
+  [self setNeedsDisplay:YES];
+}
+
+- (BOOL)isDisabled
+{
+  return disabled;
 }
 
 - (NSImage *)darkerIconFromImage:(NSImage *)source

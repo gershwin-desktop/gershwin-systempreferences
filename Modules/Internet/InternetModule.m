@@ -25,10 +25,26 @@
  */
 
 #include <AppKit/AppKit.h>
+#include <stdlib.h>
 #include "InternetModule.h"
 
 
 @implementation InternetModule
+
++ (BOOL)isCompatible {
+  NSString *pathEnv = [NSString stringWithUTF8String: getenv("PATH")];
+  NSArray *paths = [pathEnv componentsSeparatedByString: @":"];
+  for (NSString *dir in paths) {
+    if ([[NSFileManager defaultManager] isExecutableFileAtPath:
+          [dir stringByAppendingPathComponent: @"ifconfig"]])
+      return YES;
+  }
+  return NO;
+}
+
++ (NSString *)compatibilityReason {
+  return @"Network configuration tools not found";
+}
 
 - (void)mainViewDidLoad
 {

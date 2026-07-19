@@ -47,6 +47,7 @@
     
   NSFileManager *fm;
   NSNotificationCenter *nc;
+  NSMutableDictionary *lazyPaneCache;
 }
 
 + (id)systemPreferences;
@@ -66,6 +67,8 @@
 - (void)closeAfterPaneUnselection;
 
 - (void)updateDefaults;
+
+- (void)showCompatibilityAlertForPane:(id)pane;
 
 @end
 
