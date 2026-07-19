@@ -30,6 +30,14 @@
 
 @implementation InternetModule
 
++ (BOOL)isCompatible {
+  return [[NSFileManager defaultManager] fileExistsAtPath: @"/sbin/ifconfig"];
+}
+
++ (NSString *)compatibilityReason {
+  return @"Network configuration tools not found";
+}
+
 - (void)mainViewDidLoad
 {
   NSWorkspace *ws;

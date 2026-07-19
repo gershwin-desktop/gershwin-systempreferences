@@ -28,6 +28,14 @@
 
 @implementation TimeZone
 
++ (BOOL)isCompatible {
+  return [[NSFileManager defaultManager] fileExistsAtPath: @"/usr/share/zoneinfo"];
+}
+
++ (NSString *)compatibilityReason {
+  return @"No timezone data found";
+}
+
 - (void)dealloc
 {
 	[super dealloc];

@@ -46,6 +46,14 @@ static NSString *menuEntries = @"\
 
 @implementation ModifierKeys
 
++ (BOOL)isCompatible {
+  return [[NSFileManager defaultManager] fileExistsAtPath: @"/usr/bin/xmodmap"];
+}
+
++ (NSString *)compatibilityReason {
+  return @"xmodmap not found — modifier key configuration requires X11";
+}
+
 - (void)mainViewDidLoad
 {
   if (loaded == NO) {

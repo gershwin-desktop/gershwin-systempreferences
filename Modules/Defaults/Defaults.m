@@ -30,6 +30,8 @@
 
 @implementation Defaults
 
++ (BOOL)isCompatible { return YES; }
+
 - (void)dealloc
 {
   TEST_RELEASE (defaultsEntries);
