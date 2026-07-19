@@ -23,6 +23,7 @@
  */
 
 #include <AppKit/AppKit.h>
+#include <stdlib.h>
 #include "ModifierKeys.h"
 
 static NSString *menuEntries = @"\
@@ -47,7 +48,14 @@ static NSString *menuEntries = @"\
 @implementation ModifierKeys
 
 + (BOOL)isCompatible {
-  return [[NSFileManager defaultManager] fileExistsAtPath: @"/usr/bin/xmodmap"];
+  NSString *pathEnv = [NSString stringWithUTF8String: getenv("PATH")];
+  NSArray *paths = [pathEnv componentsSeparatedByString: @":"];
+  for (NSString *dir in paths) {
+    if ([[NSFileManager defaultManager] isExecutableFileAtPath:
+          [dir stringByAppendingPathComponent: @"xmodmap"]])
+      return YES;
+  }
+  return NO;
 }
 
 + (NSString *)compatibilityReason {
