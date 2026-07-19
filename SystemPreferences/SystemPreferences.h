@@ -47,6 +47,7 @@
     
   NSFileManager *fm;
   NSNotificationCenter *nc;
+  NSMutableDictionary *lazyPaneCache;
 }
 
 + (id)systemPreferences;
