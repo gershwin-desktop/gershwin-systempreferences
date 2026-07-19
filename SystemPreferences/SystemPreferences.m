@@ -217,7 +217,11 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
   [showAllButt setAutoresizingMask: NSViewMaxXMargin | NSViewMinYMargin];
   [topBar addSubview: showAllButt];
 
-  searchField = [[NSTextField alloc] initWithFrame: NSMakeRect(contentBounds.size.width - 12 - 200, (toolbarHeight - 20.0) / 2.0, 200, 20)];
+  const CGFloat searchFieldHeight = 22.0;
+  searchField = [[NSSearchField alloc] initWithFrame: NSMakeRect(contentBounds.size.width - 12 - 200, (toolbarHeight - searchFieldHeight) / 2.0, 200, searchFieldHeight)];
+  [searchField setDrawsBackground: NO];
+  [[searchField cell] setDrawsBackground: NO];
+  [[searchField cell] setBackgroundColor: [NSColor clearColor]];
   [searchField setPlaceholderString: @"Search"];  
   [searchField setAutoresizingMask: NSViewMinXMargin | NSViewMinYMargin];
   [topBar addSubview: searchField];
@@ -236,12 +240,10 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
   iconsView = [[SPIconsView alloc] initWithFrame: [[prefsBox contentView] frame]];
   [(NSBox *)prefsBox setContentView: iconsView];
   
-  // Connect search field to icons view
-  [searchField setTarget: iconsView];
-  [searchField setAction: @selector(searchFieldChanged:)];
-  // Send action continuously (on every change) rather than only at end editing
+  // Connect search field to icons view — fire on every keystroke
+  [searchField setTarget: self];
+  [searchField setAction: @selector(searchFieldDidChange:)];
   [[searchField cell] setSendsActionOnEndEditing: NO];
-  // Observe changes in the search field to update the Show All button immediately
   [nc addObserver: self
          selector: @selector(searchFieldDidChange:)
              name: NSControlTextDidChangeNotification
@@ -453,12 +455,77 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
     if (cached != nil) {
       pane = cached;
     } else {
-      Class principalClass = [bndl principalClass];
       NSTimeInterval t = [NSDate timeIntervalSinceReferenceDate];
+      volatile int saved_stderr = -1;
+      volatile int err_fd = -1;
+
+      /* Capture stderr during bundle loading to get the actual
+       * runtime error (e.g. "undefined symbol") */
+      saved_stderr = dup(STDERR_FILENO);
+      int pipefd[2];
+      if (pipe(pipefd) == 0)
+        {
+          err_fd = pipefd[0];
+          dup2(pipefd[1], STDERR_FILENO);
+          close(pipefd[1]);
+        }
+
       NS_DURING
-        pane = [[principalClass alloc] initWithBundle: bndl];
+        {
+          Class principalClass = [bndl principalClass];
+
+          /* Restore stderr */
+          if (saved_stderr >= 0)
+            {
+              dup2(saved_stderr, STDERR_FILENO);
+              close(saved_stderr);
+              saved_stderr = -1;
+            }
+
+          /* Read captured error output */
+          NSString *loadError = nil;
+          if (err_fd >= 0)
+            {
+              char buf[4096];
+              ssize_t n = read(err_fd, buf, sizeof(buf) - 1);
+              close(err_fd);
+              err_fd = -1;
+              if (n > 0)
+                {
+                  buf[n] = '\0';
+                  loadError = [NSString stringWithUTF8String: buf];
+                }
+            }
+
+          if (principalClass == nil)
+            {
+              NSString *msg = loadError ?: @"principal class is nil";
+              [NSException raise: NSGenericException
+                          format: @"%@", msg];
+            }
+          pane = [[principalClass alloc] initWithBundle: bndl];
+        }
       NS_HANDLER
+        {
+          /* Ensure stderr is restored in the exception handler too */
+          if (saved_stderr >= 0)
+            {
+              dup2(saved_stderr, STDERR_FILENO);
+              close(saved_stderr);
+            }
+          if (err_fd >= 0)
+            {
+              close(err_fd);
+            }
+        }
         NSLog(@"Failed to init pane %@: %@", bid, localException);
+        NSAlert *alert = [[NSAlert alloc] init];
+        [alert setMessageText: @"Failed to Load Preference Pane"];
+        [alert setInformativeText: [NSString stringWithFormat: @"The pane \"%@\" could not be loaded:\n%@",
+                                     bid, [localException reason]]];
+        [alert addButtonWithTitle: @"OK"];
+        [alert runModal];
+        [alert release];
         return;
       NS_ENDHANDLER
       NSLog(@"[TIMER]   lazy-init %@: %.4fs", bid, [NSDate timeIntervalSinceReferenceDate] - t);
