@@ -40,6 +40,7 @@
   TEST_RELEASE (numberEditorBox);
   TEST_RELEASE (arrayEditorBox);
   TEST_RELEASE (listEditorBox);
+  TEST_RELEASE (filterField);
   
   [super dealloc];
 }
@@ -127,6 +128,26 @@
     }
     
     [namesMatrix sizeToCells]; 
+    
+    {
+      NSRect scrollFrame = [namesScroll frame];
+      CGFloat searchH = 22.0;
+      CGFloat pad = 4.0;
+
+      scrollFrame.origin.y += searchH + pad;
+      scrollFrame.size.height -= searchH + pad;
+      [namesScroll setFrame: scrollFrame];
+
+      filterField = [[NSTextField alloc] initWithFrame:
+        NSMakeRect(scrollFrame.origin.x, scrollFrame.origin.y - searchH - pad,
+                   scrollFrame.size.width, searchH)];
+      [filterField setPlaceholderString: @"Search..."];
+      [[filterField cell] setSendsActionOnEndEditing: NO];
+      [filterField setTarget: self];
+      [filterField setAction: @selector(filterDefaults:)];
+      [filterField setContinuous: YES];
+      [[namesScroll superview] addSubview: filterField];
+    }
         
     [descriptionView setFont: [NSFont systemFontOfSize: 10]];
     [descriptionView setDrawsBackground: NO];
@@ -194,6 +215,33 @@
     }
     
   return nil;
+}
+
+- (void)filterDefaults:(id)sender
+{
+  NSString *filter = [filterField stringValue];
+  NSUInteger i;
+
+  while ([namesMatrix numberOfRows] > 0) {
+    [namesMatrix removeRow: [namesMatrix numberOfRows] - 1];
+  }
+
+  for (i = 0; i < [defaultsEntries count]; i++) {
+    DefaultEntry *entry = [defaultsEntries objectAtIndex: i];
+    NSString *name = [entry name];
+
+    if ([filter length] == 0
+        || [[name lowercaseString] rangeOfString: [filter lowercaseString]].location != NSNotFound) {
+      id cell;
+      [namesMatrix insertRow: [namesMatrix numberOfRows]];
+      cell = [namesMatrix cellAtRow: [namesMatrix numberOfRows] - 1 column: 0];
+      [cell setStringValue: name];
+      [cell setLeaf: YES];
+    }
+  }
+
+  [namesMatrix sizeToCells];
+  [self disableControls];
 }
 
 - (void)namesMatrixAction:(id)sender

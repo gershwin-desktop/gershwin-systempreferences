@@ -83,11 +83,14 @@
 
   NSMutableArray *defaultsEntries;
   DefaultEntry *currentEntry;   
+  id filterField;
     
   BOOL loaded;
 }
 
 - (DefaultEntry *)entryWithName:(NSString *)name;
+
+- (void)filterDefaults:(id)sender;
 
 - (void)namesMatrixAction:(id)sender;
 
