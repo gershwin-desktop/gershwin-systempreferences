@@ -187,7 +187,7 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 
   NSDebugLog(@"SystemPreferences: Creating window");
   // Create window
-  window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 180, 651, 482)
+  window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 180, 651, 514)
                                        styleMask: style
                                          backing: NSBackingStoreRetained
                                            defer: NO];
