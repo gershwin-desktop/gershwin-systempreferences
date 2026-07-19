@@ -68,5 +68,7 @@
 
 - (void)updateDefaults;
 
+- (void)showCompatibilityAlertForPane:(id)pane;
+
 @end
 

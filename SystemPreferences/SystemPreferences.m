@@ -62,6 +62,7 @@ static void ensureCategoryRules(void)
 - (NSString *)categoryForBundle:(NSBundle *)bundle label:(NSString *)label;
 - (void)openPaneFromCommandLineArguments;
 - (void)loadPaneBundlesAndCreateIcons;
+- (void)showCompatibilityAlertForPane:(id)pane;
 @end
 
 static SystemPreferences *systemPreferences = nil;
@@ -350,6 +351,22 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
     NSString *category = [self categoryForBundle: bundle label: lstr];
 
     icon = [[SPIcon alloc] initForPane: bundle iconImage: image labelString: lstr];
+
+    Class principalClass = [bundle principalClass];
+    if ([principalClass respondsToSelector: @selector(isCompatible)]
+        && [principalClass isCompatible] == NO) {
+      [icon setDisabled: YES];
+      NSString *reason = nil;
+      if ([principalClass respondsToSelector: @selector(compatibilityReason)]) {
+        reason = [principalClass compatibilityReason];
+      }
+      if (reason == nil) {
+        reason = [dict objectForKey: @"NSPrefPaneCompatibilityReason"];
+      }
+      NSLog(@"PrefPane '%@' disabled: incompatible with this system%@",
+            lstr, reason ? [NSString stringWithFormat: @" (%@)", reason] : @"");
+    }
+
     [iconsView addIcon: icon forCategory: category];
     RELEASE (icon);
     RELEASE (image);
@@ -652,6 +669,23 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 - (void)updateDefaults
 {
   // Intentionally do not save the window frame to avoid moving it on future launches.
+}
+
+- (void)showCompatibilityAlertForPane:(id)pane
+{
+  NSString *reason = nil;
+  if ([pane isKindOfClass: [NSBundle class]]) {
+    Class pc = [(NSBundle *)pane principalClass];
+    if ([pc respondsToSelector: @selector(compatibilityReason)]) {
+      reason = [pc compatibilityReason];
+    }
+    if (reason == nil) {
+      reason = [[(NSBundle *)pane infoDictionary] objectForKey: @"NSPrefPaneCompatibilityReason"];
+    }
+  }
+  NSRunAlertPanel(@"Not Compatible",
+                  reason ?: @"This preference pane is not compatible with your system.",
+                  @"OK", nil, nil);
 }
 
 - (NSString *)categoryForBundle:(NSBundle *)bundle label:(NSString *)label
