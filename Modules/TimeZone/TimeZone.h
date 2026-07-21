@@ -40,11 +40,14 @@
   IBOutlet id codeField;
   IBOutlet id commentsField;
   IBOutlet id setButt;
+  NSButton *utcCheckbox;
 }
 
 - (void)showInfoOfLocation:(MapLocation *)loc;
 
 - (IBAction)setButtAction:(id)sender;
+
+- (void)utcCheckboxAction:(id)sender;
 
 @end
 
