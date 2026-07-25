@@ -772,6 +772,7 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
   if (reason == nil) {
     reason = @"This preference pane is not compatible with your system.";
   }
+  NSLog(@"NSRunAlertPanel: Not Compatible — %@", reason);
   NSRunAlertPanel(@"Not Compatible", reason, @"OK", nil, nil);
 }
 
