@@ -354,8 +354,17 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 
     icon = [[SPIcon alloc] initForPane: bundle iconImage: image labelString: lstr];
 
-    Class principalClass = [bundle principalClass];
-    if ([principalClass respondsToSelector: @selector(isCompatible)]
+    Class principalClass = Nil;
+    NS_DURING
+      principalClass = [bundle principalClass];
+    NS_HANDLER
+      NSLog(@"PrefPane '%@': principalClass load failed (%@)", lstr, localException);
+    NS_ENDHANDLER
+
+    if (principalClass == Nil) {
+      [icon setDisabled: YES];
+      NSLog(@"PrefPane '%@' disabled: principalClass could not be loaded", lstr);
+    } else if ([principalClass respondsToSelector: @selector(isCompatible)]
         && [principalClass isCompatible] == NO) {
       [icon setDisabled: YES];
       NSString *reason = nil;
@@ -519,13 +528,6 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
             }
         }
         NSLog(@"Failed to init pane %@: %@", bid, localException);
-        NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText: @"Failed to Load Preference Pane"];
-        [alert setInformativeText: [NSString stringWithFormat: @"The pane \"%@\" could not be loaded:\n%@",
-                                     bid, [localException reason]]];
-        [alert addButtonWithTitle: @"OK"];
-        [alert runModal];
-        [alert release];
         return;
       NS_ENDHANDLER
       NSLog(@"[TIMER]   lazy-init %@: %.4fs", bid, [NSDate timeIntervalSinceReferenceDate] - t);

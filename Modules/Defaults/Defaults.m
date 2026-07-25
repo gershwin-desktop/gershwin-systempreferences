@@ -130,22 +130,25 @@
     [namesMatrix sizeToCells]; 
     
     {
-      NSRect scrollFrame = [namesScroll frame];
+      NSRect parentBounds = [[namesScroll superview] bounds];
       CGFloat searchH = 22.0;
       CGFloat pad = 4.0;
 
-      scrollFrame.origin.y += searchH + pad;
-      scrollFrame.size.height -= searchH + pad;
-      [namesScroll setFrame: scrollFrame];
+      [namesScroll setFrame: NSMakeRect(0, 0,
+                                        parentBounds.size.width,
+                                        parentBounds.size.height - searchH - pad)];
 
-      filterField = [[NSTextField alloc] initWithFrame:
-        NSMakeRect(scrollFrame.origin.x, scrollFrame.origin.y - searchH - pad,
-                   scrollFrame.size.width, searchH)];
-      [filterField setPlaceholderString: @"Search..."];
-      [[filterField cell] setSendsActionOnEndEditing: NO];
+      filterField = [[NSSearchField alloc] initWithFrame:
+        NSMakeRect(0, parentBounds.size.height - searchH,
+                   parentBounds.size.width, searchH)];
+      [filterField setDrawsBackground: NO];
+      [[filterField cell] setDrawsBackground: NO];
+      [[filterField cell] setBackgroundColor: [NSColor clearColor]];
+      [filterField setPlaceholderString: @"Search"];
       [filterField setTarget: self];
       [filterField setAction: @selector(filterDefaults:)];
-      [filterField setContinuous: YES];
+      [[filterField cell] setSendsActionOnEndEditing: NO];
+      [filterField setAutoresizingMask: NSViewWidthSizable | NSViewMinYMargin];
       [[namesScroll superview] addSubview: filterField];
     }
         
