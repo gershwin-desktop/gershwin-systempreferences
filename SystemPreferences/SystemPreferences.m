@@ -267,6 +267,11 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
             afterDelay: 0.05];
 }
 
+- (BOOL)application:(NSApplication *)app openFile:(NSString *)filename
+{
+  return NO;
+}
+
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)app
 {
     return YES;
