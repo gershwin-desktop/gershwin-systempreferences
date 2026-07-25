@@ -43,7 +43,7 @@
 }
 
 + (NSString *)compatibilityReason {
-  return @"Network configuration tools not found";
+  return @"ifconfig not found on PATH — Network configuration requires ifconfig";
 }
 
 - (void)mainViewDidLoad

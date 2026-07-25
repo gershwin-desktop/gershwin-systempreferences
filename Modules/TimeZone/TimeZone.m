@@ -86,8 +86,12 @@ static void writeUtcConfig(BOOL isUTC)
     [task launch];
     [task waitUntilExit];
     if ([task terminationStatus] == 0) {
-      args = @[@"-S", @"rm", tmpPath];
-      [task setArguments: args];
+      RELEASE(task);
+      task = [[NSTask alloc] init];
+      [task setLaunchPath: @"/usr/bin/sudo"];
+      [task setArguments: @[@"-S", @"rm", tmpPath]];
+      [task setStandardOutput: [NSFileHandle fileHandleWithNullDevice]];
+      [task setStandardError: [NSFileHandle fileHandleWithNullDevice]];
       [task launch];
       [task waitUntilExit];
     }
@@ -100,7 +104,7 @@ static void writeUtcConfig(BOOL isUTC)
 static void notifyClockExtra(void)
 {
   id proxy = [NSConnection rootProxyForConnectionWithRegisteredName:
-                @"org.gnustep.ClockExtraService" host: @"*"];
+                @"org.gnustep.ClockExtraService" host: nil];
   if (proxy) {
     [proxy performSelector: @selector(timeConfigDidChange)];
   }
