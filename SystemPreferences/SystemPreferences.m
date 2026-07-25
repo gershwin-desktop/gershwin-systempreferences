@@ -307,95 +307,104 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 
 - (void)loadPaneBundlesAndCreateIcons
 {
-  NSTimeInterval t_start = [NSDate timeIntervalSinceReferenceDate];
-  unsigned i;
-  NSString *bundlesDir;
-  NSTimeInterval t;
+  NS_DURING
+  {
+    NSTimeInterval t_start = [NSDate timeIntervalSinceReferenceDate];
+    unsigned i;
+    NSString *bundlesDir;
+    NSTimeInterval t;
 
-  bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) lastObject];
-  bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
-  t = [NSDate timeIntervalSinceReferenceDate];
-  [self addPanesFromDirectory: bundlesDir];
-  NSLog(@"[TIMER]   user panes: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
+    bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) lastObject];
+    bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
+    t = [NSDate timeIntervalSinceReferenceDate];
+    [self addPanesFromDirectory: bundlesDir];
+    NSLog(@"[TIMER]   user panes: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
 
-  bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSLocalDomainMask, YES) lastObject];
-  bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
-  t = [NSDate timeIntervalSinceReferenceDate];
-  [self addPanesFromDirectory: bundlesDir];
-  NSLog(@"[TIMER]   local panes: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
+    bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSLocalDomainMask, YES) lastObject];
+    bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
+    t = [NSDate timeIntervalSinceReferenceDate];
+    [self addPanesFromDirectory: bundlesDir];
+    NSLog(@"[TIMER]   local panes: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
 
-  bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSSystemDomainMask, YES) lastObject];
-  bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
-  t = [NSDate timeIntervalSinceReferenceDate];
-  [self addPanesFromDirectory: bundlesDir];
-  NSLog(@"[TIMER]   system panes: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
+    bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSSystemDomainMask, YES) lastObject];
+    bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
+    t = [NSDate timeIntervalSinceReferenceDate];
+    [self addPanesFromDirectory: bundlesDir];
+    NSLog(@"[TIMER]   system panes: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
 
-  t = [NSDate timeIntervalSinceReferenceDate];
-  [panes sortUsingComparator: ^NSComparisonResult(id a, id b) {
-    NSString *la = [[a infoDictionary] objectForKey: @"NSPrefPaneIconLabel"];
-    NSString *lb = [[b infoDictionary] objectForKey: @"NSPrefPaneIconLabel"];
-    return [la compare: lb];
-  }];
-  NSLog(@"[TIMER]   sort: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
+    t = [NSDate timeIntervalSinceReferenceDate];
+    [panes sortUsingComparator: ^NSComparisonResult(id a, id b) {
+      NSString *la = [[a infoDictionary] objectForKey: @"NSPrefPaneIconLabel"];
+      NSString *lb = [[b infoDictionary] objectForKey: @"NSPrefPaneIconLabel"];
+      return [la compare: lb];
+    }];
+    NSLog(@"[TIMER]   sort: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
 
-  NSTimeInterval t_icons = [NSDate timeIntervalSinceReferenceDate];
-  for (i = 0; i < [panes count]; i++) {
-    NSTimeInterval t_pane = [NSDate timeIntervalSinceReferenceDate];
-    CREATE_AUTORELEASE_POOL (pool);
-    NSBundle *bundle = [panes objectAtIndex: i];
-    NSDictionary *dict = [bundle infoDictionary];
+    NSTimeInterval t_icons = [NSDate timeIntervalSinceReferenceDate];
+    for (i = 0; i < [panes count]; i++) {
+      NSTimeInterval t_pane = [NSDate timeIntervalSinceReferenceDate];
+      CREATE_AUTORELEASE_POOL (pool);
+      NSBundle *bundle = [panes objectAtIndex: i];
+      NSDictionary *dict = [bundle infoDictionary];
 
-    NSString *iname = [dict objectForKey: @"NSPrefPaneIconFile"];
-    NSString *ipath = [bundle pathForResource: iname ofType: nil];
-    NSImage *image = [[NSImage alloc] initWithContentsOfFile: ipath];
-    NSString *lstr = [dict objectForKey: @"NSPrefPaneIconLabel"];
-    SPIcon *icon;
-    NSString *category = [self categoryForBundle: bundle label: lstr];
+      NSString *iname = [dict objectForKey: @"NSPrefPaneIconFile"];
+      NSString *ipath = [bundle pathForResource: iname ofType: nil];
+      NSImage *image = [[NSImage alloc] initWithContentsOfFile: ipath];
+      NSString *lstr = [dict objectForKey: @"NSPrefPaneIconLabel"];
+      SPIcon *icon;
+      NSString *category = [self categoryForBundle: bundle label: lstr];
 
-    icon = [[SPIcon alloc] initForPane: bundle iconImage: image labelString: lstr];
+      icon = [[SPIcon alloc] initForPane: bundle iconImage: image labelString: lstr];
 
-    Class principalClass = Nil;
-    NS_DURING
-      principalClass = [bundle principalClass];
-    NS_HANDLER
-      NSLog(@"PrefPane '%@': principalClass load failed (%@)", lstr, localException);
-    NS_ENDHANDLER
+      volatile Class principalClass = Nil;
+      NS_DURING
+        principalClass = [bundle principalClass];
+      NS_HANDLER
+        NSLog(@"PrefPane '%@': principalClass load failed (%@)", lstr, localException);
+        principalClass = Nil;
+      NS_ENDHANDLER
 
-    if (principalClass == Nil) {
-      [icon setDisabled: YES];
-      NSLog(@"PrefPane '%@' disabled: principalClass could not be loaded", lstr);
-    } else if ([principalClass respondsToSelector: @selector(isCompatible)]
-        && [principalClass isCompatible] == NO) {
-      [icon setDisabled: YES];
-      NSString *reason = nil;
-      if ([principalClass respondsToSelector: @selector(compatibilityReason)]) {
-        reason = [principalClass compatibilityReason];
+      if (principalClass == Nil) {
+        [icon setDisabled: YES];
+        NSLog(@"PrefPane '%@' disabled: principalClass could not be loaded", lstr);
+      } else if ([principalClass respondsToSelector: @selector(isCompatible)]
+          && [principalClass isCompatible] == NO) {
+        [icon setDisabled: YES];
+        NSString *reason = nil;
+        if ([principalClass respondsToSelector: @selector(compatibilityReason)]) {
+          reason = [principalClass compatibilityReason];
+        }
+        if (reason == nil) {
+          reason = [dict objectForKey: @"NSPrefPaneCompatibilityReason"];
+        }
+        NSLog(@"PrefPane '%@' disabled: incompatible with this system%@",
+              lstr, reason ? [NSString stringWithFormat: @" (%@)", reason] : @"");
       }
-      if (reason == nil) {
-        reason = [dict objectForKey: @"NSPrefPaneCompatibilityReason"];
-      }
-      NSLog(@"PrefPane '%@' disabled: incompatible with this system%@",
-            lstr, reason ? [NSString stringWithFormat: @" (%@)", reason] : @"");
+
+      [iconsView addIcon: icon forCategory: category];
+      RELEASE (icon);
+      RELEASE (image);
+      RELEASE (pool);
+      NSLog(@"[TIMER]   icon %u/%u '%@': %.4fs", i + 1, (unsigned)[panes count], lstr,
+            [NSDate timeIntervalSinceReferenceDate] - t_pane);
     }
+    NSLog(@"[TIMER]   icons total: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t_icons);
 
-    [iconsView addIcon: icon forCategory: category];
-    RELEASE (icon);
-    RELEASE (image);
-    RELEASE (pool);
-    NSLog(@"[TIMER]   icon %u/%u '%@': %.4fs", i + 1, (unsigned)[panes count], lstr,
-          [NSDate timeIntervalSinceReferenceDate] - t_pane);
+    NSTimeInterval t_tile = [NSDate timeIntervalSinceReferenceDate];
+    [iconsView tile];
+    NSLog(@"[TIMER]   tile: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t_tile);
+
+    [self openPaneFromCommandLineArguments];
+    NSLog(@"[TIMER] loadPaneBundlesAndCreateIcons total: %.4fs",
+          [NSDate timeIntervalSinceReferenceDate] - t_start);
+
+    [showAllButt setEnabled: NO];
   }
-  NSLog(@"[TIMER]   icons total: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t_icons);
-
-  NSTimeInterval t_tile = [NSDate timeIntervalSinceReferenceDate];
-  [iconsView tile];
-  NSLog(@"[TIMER]   tile: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t_tile);
-
-  [self openPaneFromCommandLineArguments];
-  NSLog(@"[TIMER] loadPaneBundlesAndCreateIcons total: %.4fs",
-        [NSDate timeIntervalSinceReferenceDate] - t_start);
-
-  [showAllButt setEnabled: NO];
+  NS_HANDLER
+  {
+    NSLog(@"PrefPane loading failed: %@", localException);
+  }
+  NS_ENDHANDLER
 }
 
 - (void)addPanesFromDirectory:(NSString *)dir
@@ -744,17 +753,26 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 {
   NSString *reason = nil;
   if ([pane isKindOfClass: [NSBundle class]]) {
-    Class pc = [(NSBundle *)pane principalClass];
-    if ([pc respondsToSelector: @selector(compatibilityReason)]) {
-      reason = [pc compatibilityReason];
+    NS_DURING
+    {
+      Class pc = [(NSBundle *)pane principalClass];
+      if ([pc respondsToSelector: @selector(compatibilityReason)]) {
+        reason = [pc compatibilityReason];
+      }
     }
+    NS_HANDLER
+    {
+      NSLog(@"showCompatibilityAlertForPane: %@", localException);
+    }
+    NS_ENDHANDLER
     if (reason == nil) {
       reason = [[(NSBundle *)pane infoDictionary] objectForKey: @"NSPrefPaneCompatibilityReason"];
     }
   }
-  NSRunAlertPanel(@"Not Compatible",
-                  reason ?: @"This preference pane is not compatible with your system.",
-                  @"OK", nil, nil);
+  if (reason == nil) {
+    reason = @"This preference pane is not compatible with your system.";
+  }
+  NSRunAlertPanel(@"Not Compatible", reason, @"OK", nil, nil);
 }
 
 - (NSString *)categoryForBundle:(NSBundle *)bundle label:(NSString *)label
