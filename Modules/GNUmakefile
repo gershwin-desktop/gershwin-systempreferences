@@ -4,7 +4,6 @@ include $(GNUSTEP_MAKEFILES)/common.make
 
 SUBPROJECTS = \
         TimeZone \
-        FileSystem \
         ModifierKeys \
         Defaults \
 	Internet
