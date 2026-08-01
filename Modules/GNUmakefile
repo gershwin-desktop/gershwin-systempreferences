@@ -7,7 +7,6 @@ SUBPROJECTS = \
         Volumes \
         FileSystem \
         ModifierKeys \
-        Fonts \
         Defaults \
 	Themes \
 	Internet
