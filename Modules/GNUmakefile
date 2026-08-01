@@ -4,11 +4,9 @@ include $(GNUSTEP_MAKEFILES)/common.make
 
 SUBPROJECTS = \
         TimeZone \
-        Volumes \
         FileSystem \
         ModifierKeys \
         Defaults \
-	Themes \
 	Internet
 
 -include GNUmakefile.preamble
