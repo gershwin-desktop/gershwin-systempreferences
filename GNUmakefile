@@ -37,6 +37,7 @@ ifeq ($(GNUSTEP_MAKEFILES),)
 endif
 
 include $(GNUSTEP_MAKEFILES)/common.make
+GNUSTEP_INSTALLATION_DOMAIN = SYSTEM
 
 #
 # The list of subproject directories
@@ -50,4 +51,5 @@ SUBPROJECTS = PreferencePanes Modules SystemPreferences
 include $(GNUSTEP_MAKEFILES)/aggregate.make
 
 -include Makefile.postamble
+
 
