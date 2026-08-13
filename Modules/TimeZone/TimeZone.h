@@ -49,6 +49,8 @@
 
 - (void)utcCheckboxAction:(id)sender;
 
+- (void)relayoutForHostSize;
+
 @end
 
 #endif // TIME_ZONE_H

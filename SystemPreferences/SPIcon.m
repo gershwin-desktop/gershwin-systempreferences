@@ -15,7 +15,6 @@ static const CGFloat kIconBottomMargin = 2.0;
 static const CGFloat kLabelPadding = 2.0;
 static const CGFloat kLabelLineSpacing = 0.5;  // reduced for tighter labels
 static const CGFloat kLabelFontSize = 10.0;
-static const NSUInteger kMaxLabelLines = 2;
 
 static inline double myrintf(double value)
 {
@@ -126,52 +125,30 @@ static inline double myrintf(double value)
   }
 
   NSDictionary *attributes = @{NSFontAttributeName:[NSFont systemFontOfSize:kLabelFontSize]};
-  NSMutableArray<NSString *> *result = [NSMutableArray arrayWithCapacity:kMaxLabelLines];
-  NSArray<NSString *> *paragraphs = [label componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
+  NSString *line = label;
 
-  for (NSString *paragraph in paragraphs) {
-    if (result.count >= kMaxLabelLines) {
-      break;
-    }
-    NSString *trimmed = [paragraph stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    if (!trimmed.length) {
-      continue;
-    }
-    NSArray<NSString *> *words = [trimmed componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    NSMutableString *current = [NSMutableString string];
-
-    for (NSString *word in words) {
-      if (!word.length) {
-        continue;
+  /* Single line, truncated with an ellipsis when it does not fit. */
+  CGSize size = [line sizeWithAttributes:attributes];
+  if (size.width > maxWidth) {
+    NSString *ellipsis = @"\u2026";
+    NSMutableString *shortened = [NSMutableString string];
+    NSUInteger i = 0;
+    while (i < [line length]) {
+      NSRange r = [line rangeOfComposedCharacterSequenceAtIndex: i];
+      [shortened appendString: [line substringWithRange: r]];
+      i = NSMaxRange(r);
+      NSString *candidate = [shortened stringByAppendingString: ellipsis];
+      if ([candidate sizeWithAttributes:attributes].width > maxWidth) {
+        [shortened deleteCharactersInRange:
+          NSMakeRange([shortened length] - r.length, r.length)];
+        break;
       }
-      if (!current.length) {
-        [current appendString:word];
-        continue;
-      }
-      NSString *candidate = [NSString stringWithFormat:@"%@ %@", current, word];
-      CGSize size = [candidate sizeWithAttributes:attributes];
-      if (size.width > maxWidth && result.count < kMaxLabelLines - 1) {
-        [result addObject:[current copy]];
-        [current setString:word];
-        if (result.count >= kMaxLabelLines) {
-          break;
-        }
-        continue;
-      }
-      [current setString:candidate];
     }
-    if (current.length && result.count < kMaxLabelLines) {
-      [result addObject:[current copy]];
-    }
+    [shortened appendString: ellipsis];
+    line = shortened;
   }
 
-  if (!result.count) {
-    [result addObject:label];
-  }
-  if (result.count > kMaxLabelLines) {
-    return [result subarrayWithRange:NSMakeRange(0, kMaxLabelLines)];
-  }
-  return result;
+  return @[line];
 }
 
 - (void)drawRect:(NSRect)dirtyRect

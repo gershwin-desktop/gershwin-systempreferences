@@ -154,21 +154,71 @@ static void notifyClockExtra(void)
 	}
 
       BOOL isUTC = [readUtcConfig() isEqualToString: @"UTC"];
-      CGFloat yOff = 0;
-      if (setButt) {
-        NSRect buttFrame = [setButt frame];
-        yOff = NSMaxY(buttFrame) + 8;
-      }
-      NSRect parentBounds = [[self mainView] bounds];
       utcCheckbox = [[NSButton alloc] initWithFrame:
-        NSMakeRect(12, parentBounds.size.height - yOff - 22, 220, 18)];
+        NSMakeRect(24, 398, 220, 18)];
       [utcCheckbox setButtonType: NSSwitchButton];
       [utcCheckbox setTitle: @"Hardware clock is in UTC"];
       [utcCheckbox setState: isUTC ? NSOnState : NSOffState];
       [utcCheckbox setTarget: self];
       [utcCheckbox setAction: @selector(utcCheckboxAction:)];
       [[self mainView] addSubview: utcCheckbox];
-    }  
+
+      [self relayoutForHostSize];
+    }
+}
+
+/* didSelect is invoked by the host after the mainView has been resized to
+   the preferences box content rect, so this is where the pane layout can be
+   computed for the final size. */
+- (void)didSelect
+{
+  [super didSelect];
+  [self relayoutForHostSize];
+}
+
+- (void)relayoutForHostSize
+{
+  NSView *mv = [self mainView];
+  if (mv == nil) {
+    return;
+  }
+
+  /* The box content rect is 12px shorter than the box; clamp the pane to the
+     full window content size (640x440) so spacing is symmetric. */
+  const CGFloat kMargin = 24.0;
+  const CGFloat kBottom = 20.0;
+  const CGFloat kGap = 12.0;
+  const CGFloat kW = 640.0;
+  const CGFloat kH = 440.0;
+  CGFloat W = kW;
+  NSRect pb = [mv bounds];
+  if (pb.size.width > 0) {
+    W = pb.size.width;
+  }
+  [mv setFrame: NSMakeRect(0, 0, W, kH)];
+
+  /* Bottom row: zone field (left) + Set Location button (right). */
+  CGFloat btnW = 82.0;
+  CGFloat btnH = 24.0;
+  CGFloat btnX = W - kMargin - btnW;
+  [setButt setFrame: NSMakeRect(btnX, kBottom, btnW, btnH)];
+  [zoneField setFrame: NSMakeRect(kMargin, kBottom, btnX - kMargin - kGap, 21)];
+
+  /* Info row above it: location code + comments. */
+  CGFloat infoY = kBottom + btnH + kGap;
+  CGFloat codeW = 40.0;
+  [codeField setFrame: NSMakeRect(kMargin, infoY, codeW, 21)];
+  [commentsField setFrame: NSMakeRect(kMargin + codeW + kGap, infoY,
+                                      W - (kMargin + codeW + kGap) - kMargin, 21)];
+
+  /* UTC checkbox at the top. */
+  [utcCheckbox setFrame: NSMakeRect(kMargin, kH - kMargin - 18, 220, 18)];
+
+  /* Map box fills between the info row and the UTC checkbox. */
+  CGFloat mapY = infoY + 21 + kGap;
+  CGFloat mapH = (kH - kMargin - 18) - kGap - mapY;
+  [imageBox setFrame: NSMakeRect(kMargin, mapY, W - 2 * kMargin, mapH)];
+  [(NSBox *)imageBox setTitle: @""];
 }
 
 - (void)showInfoOfLocation:(MapLocation *)loc

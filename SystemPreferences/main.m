@@ -58,10 +58,19 @@ int main(int argc, char **argv, char** env)
 	    [conn setRequestTimeout: 5.0];
 	    id proxy = [conn rootProxy];
 	    if (proxy) {
-	      [proxy performSelector: @selector(openPane:) withObject: target];
+	      /* Only forward and exit when the peer is actually alive.  A stale
+	         name-server entry from a killed instance must not make us exit. */
+	      BOOL forwarded = NO;
+	      NS_DURING
+	        [proxy performSelector: @selector(openPane:) withObject: target];
+	        forwarded = YES;
+	      NS_HANDLER
+	      NS_ENDHANDLER
+	      if (forwarded) {
+	        DESTROY (pool);
+	        return 0;
+	      }
 	    }
-	    DESTROY (pool);
-	    return 0;
 	  }
 	}
 

@@ -197,7 +197,7 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
 
   NSDebugLog(@"SystemPreferences: Creating window");
   // Create window
-  window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 180, 651, 514)
+  window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 180, 640, 480)
                                        styleMask: style
                                          backing: NSBackingStoreRetained
                                            defer: NO];
@@ -243,6 +243,11 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
   prefsBox = [[NSBox alloc] initWithFrame: NSMakeRect(0, 0, contentBounds.size.width, contentBounds.size.height - toolbarHeight)];
   [prefsBox setTitle: @""];
   [prefsBox setBorderType: NSNoBorder];  // Remove border to match reference
+  // NSBox defaults to a 5px content margin; the pane content would then sit
+  // 5px off the box's left edge while filling to the right, making a pane's
+  // own left/right side margins look asymmetric.  Zero it so each pane
+  // controls its own margins symmetrically.
+  [prefsBox setContentViewMargins: NSMakeSize(0, 0)];
   [prefsBox setAutoresizingMask: NSViewWidthSizable | NSViewHeightSizable];
   [[window contentView] addSubview: prefsBox];
     
