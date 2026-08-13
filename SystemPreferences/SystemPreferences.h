@@ -32,7 +32,13 @@
 @class NSBox;
 @class SPIconsView;
 
-@interface SystemPreferences : NSObject <NSTextFieldDelegate>
+extern NSString * const kSystemPreferencesServiceName;
+
+@protocol SystemPreferencesService
+- (oneway void)openPane:(NSString *)target;
+@end
+
+@interface SystemPreferences : NSObject <NSTextFieldDelegate, SystemPreferencesService>
 {
   NSWindow *window;
   id showAllButt;
@@ -48,6 +54,7 @@
   NSFileManager *fm;
   NSNotificationCenter *nc;
   NSMutableDictionary *lazyPaneCache;
+  NSConnection *doConn;
 }
 
 + (id)systemPreferences;
@@ -69,6 +76,8 @@
 - (void)updateDefaults;
 
 - (void)showCompatibilityAlertForPane:(id)pane;
+
+- (void)openPane:(NSString *)target;
 
 @end
 

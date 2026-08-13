@@ -36,7 +36,35 @@ int main(int argc, char **argv, char** env)
 	CREATE_AUTORELEASE_POOL (pool);
 	NSApplication *theApp = [NSApplication sharedApplication];  
 	createMenu();  
-	[theApp setDelegate: [SystemPreferences systemPreferences]];  
+	[theApp setDelegate: [SystemPreferences systemPreferences]];
+
+	// Single-instance: if another instance is already running, forward the
+	// requested pane (or "go back to start screen") to it and exit.
+	{
+	  NSString *target = nil;
+	  NSInteger i;
+
+	  for (i = 1; i < argc; i++) {
+	    NSString *arg = [NSString stringWithUTF8String: argv[i]];
+	    if ([arg hasPrefix: @"-"] == NO) {
+	      target = arg;
+	      break;
+	    }
+	  }
+
+	  NSConnection *conn = [NSConnection connectionWithRegisteredName:
+	    kSystemPreferencesServiceName host: nil];
+	  if (conn) {
+	    [conn setRequestTimeout: 5.0];
+	    id proxy = [conn rootProxy];
+	    if (proxy) {
+	      [proxy performSelector: @selector(openPane:) withObject: target];
+	    }
+	    DESTROY (pool);
+	    return 0;
+	  }
+	}
+
 	[theApp run];	
 	DESTROY (pool);
 	return 0;

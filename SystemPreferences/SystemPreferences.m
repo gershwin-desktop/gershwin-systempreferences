@@ -61,12 +61,14 @@ static void ensureCategoryRules(void)
 @interface SystemPreferences ()
 - (NSString *)categoryForBundle:(NSBundle *)bundle label:(NSString *)label;
 - (void)openPaneFromCommandLineArguments;
+- (void)openPaneNamed:(NSString *)target;
 - (void)loadPaneBundlesAndCreateIcons;
 - (void)showCompatibilityAlertForPane:(id)pane;
 @end
 
 static SystemPreferences *systemPreferences = nil;
 static NSFileHandle *dispatchMainQueueHandle = nil;
+NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.SystemPreferencesService";
 
 @implementation SystemPreferences
 
@@ -83,6 +85,8 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 {
   [nc removeObserver: self];
   
+  [doConn invalidate];
+  RELEASE (doConn);
   RELEASE (window);
   RELEASE (panes);
   RELEASE (iconsView);
@@ -172,6 +176,12 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 {
   NSTimeInterval t_start = [NSDate timeIntervalSinceReferenceDate];
   NSLog(@"[TIMER] applicationWillFinishLaunching started");
+
+  // Register as single-instance DO service so that a second invocation can
+  // forward its request to this instance instead of spawning a second window.
+  doConn = [[NSConnection alloc] init];
+  [doConn setRootObject: self];
+  [doConn registerName: kSystemPreferencesServiceName];
 
   // If we've already built the toolbar and search field (this can be called more than once), skip
   if (searchField != nil && prefsBox != nil) {
@@ -733,6 +743,11 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
     return;
   }
 
+  [self openPaneNamed: target];
+}
+
+- (void)openPaneNamed:(NSString *)target
+{
   for (NSBundle *bndl in panes) {
     NSString *paneName = [[bndl bundlePath] lastPathComponent];
 
@@ -747,6 +762,22 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
       break;
     }
   }
+}
+
+- (oneway void)openPane:(NSString *)target
+{
+  if (window == nil) {
+    return;
+  }
+
+  if ([target length] == 0) {
+    [self showIconsView];
+  } else {
+    [self openPaneNamed: target];
+  }
+
+  [window makeKeyAndOrderFront: nil];
+  [NSApp activateIgnoringOtherApps: YES];
 }
 
 - (void)updateDefaults
