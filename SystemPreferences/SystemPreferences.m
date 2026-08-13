@@ -218,12 +218,13 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
   [topBar setAutoresizingMask: NSViewWidthSizable | NSViewMinYMargin];
   [[window contentView] addSubview: topBar];
 
-  showAllButt = [[NSButton alloc] initWithFrame: NSMakeRect(12, (toolbarHeight - 24.0) / 2.0, 88, 24)];
+  // Size per gershwin-eau-theme AppearanceMetrics.h: METRICS_BUTTON_MIN_WIDTH=100, METRICS_BUTTON_HEIGHT=20
+  showAllButt = [[NSButton alloc] initWithFrame: NSMakeRect(12, (toolbarHeight - 20.0) / 2.0, 100, 20)];
   [showAllButt setTitle: @"Show All"];
   [showAllButt setButtonType: NSMomentaryPushInButton];
   [showAllButt setTarget: self];
   [showAllButt setAction: @selector(showAll:)];
-  [showAllButt setEnabled: NO];
+  [showAllButt setEnabled: YES];
   [showAllButt setAutoresizingMask: NSViewMaxXMargin | NSViewMinYMargin];
   [topBar addSubview: showAllButt];
 
@@ -412,8 +413,6 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
     [self openPaneFromCommandLineArguments];
     NSLog(@"[TIMER] loadPaneBundlesAndCreateIcons total: %.4fs",
           [NSDate timeIntervalSinceReferenceDate] - t_start);
-
-    [showAllButt setEnabled: NO];
   }
   NS_HANDLER
   {
@@ -635,7 +634,6 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
       [searchField setStringValue: @""];
     }
     [iconsView showAllIcons];
-    [showAllButt setEnabled: NO];
   }
 }
 
@@ -664,7 +662,6 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
     // Do not resize or animate the window when returning to icons view.
 
     currentPane = nil;
-    [showAllButt setEnabled: NO];
   }
 }
 
@@ -678,15 +675,6 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
 
 - (void)searchFieldDidChange:(NSNotification *)notif
 {
-  NSString *s = [searchField stringValue];
-
-  if (s && [s length] > 0) {
-    [showAllButt setEnabled: YES];
-  } else {
-    // If there's no search text, only enable Show All if a pane is selected
-    [showAllButt setEnabled: (currentPane != nil)];
-  }
-
   // Forward to icons view to trigger filtering immediately
   if ([iconsView respondsToSelector: @selector(searchFieldChanged:)]) {
     [iconsView searchFieldChanged: searchField];
