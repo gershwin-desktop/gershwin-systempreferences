@@ -218,8 +218,11 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
   [topBar setAutoresizingMask: NSViewWidthSizable | NSViewMinYMargin];
   [[window contentView] addSubview: topBar];
 
-  // Size per gershwin-eau-theme AppearanceMetrics.h: METRICS_BUTTON_MIN_WIDTH=100, METRICS_BUTTON_HEIGHT=20
-  showAllButt = [[NSButton alloc] initWithFrame: NSMakeRect(12, (toolbarHeight - 20.0) / 2.0, 100, 20)];
+  // Size per gershwin-eau-theme AppearanceMetrics.h: METRICS_BUTTON_MIN_WIDTH=100, METRICS_BUTTON_HEIGHT=20.
+  // Side margins match METRICS_CONTENT_SIDE_MARGIN (24) so the toolbar
+  // aligns with the panes below (which use 24px side margins).
+  const CGFloat toolbarSideMargin = 24.0;
+  showAllButt = [[NSButton alloc] initWithFrame: NSMakeRect(toolbarSideMargin, (toolbarHeight - 20.0) / 2.0, 100, 20)];
   [showAllButt setTitle: @"Show All"];
   [showAllButt setButtonType: NSMomentaryPushInButton];
   [showAllButt setTarget: self];
@@ -229,7 +232,7 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
   [topBar addSubview: showAllButt];
 
   const CGFloat searchFieldHeight = 22.0;
-  searchField = [[NSSearchField alloc] initWithFrame: NSMakeRect(contentBounds.size.width - 12 - 200, (toolbarHeight - searchFieldHeight) / 2.0, 200, searchFieldHeight)];
+  searchField = [[NSSearchField alloc] initWithFrame: NSMakeRect(contentBounds.size.width - toolbarSideMargin - 200, (toolbarHeight - searchFieldHeight) / 2.0, 200, searchFieldHeight)];
   [searchField setDrawsBackground: NO];
   [[searchField cell] setDrawsBackground: NO];
   [[searchField cell] setBackgroundColor: [NSColor clearColor]];
@@ -248,6 +251,12 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
   // own left/right side margins look asymmetric.  Zero it so each pane
   // controls its own margins symmetrically.
   [prefsBox setContentViewMargins: NSMakeSize(0, 0)];
+  // The box has no title; NSAtTop (the default) makes Eau's content-view
+  // sizing add 5px width and subtract ~11px height, handing panes a
+  // distorted 645x429 instead of the full 640x440.  NSNoTitle sizes the
+  // content view to the box bounds exactly, so panes laid out for 640x440
+  // fit without per-pane re-layout hacks.
+  [prefsBox setTitlePosition: NSNoTitle];
   [prefsBox setAutoresizingMask: NSViewWidthSizable | NSViewHeightSizable];
   [[window contentView] addSubview: prefsBox];
     
