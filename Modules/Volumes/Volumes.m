@@ -27,6 +27,8 @@
 
 @implementation Volumes
 
++ (BOOL)isCompatible { return YES; }
+
 - (void)dealloc
 {
   RELEASE (reservedNames);

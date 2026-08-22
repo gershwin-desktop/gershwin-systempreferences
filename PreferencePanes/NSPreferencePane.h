@@ -120,6 +120,15 @@ typedef enum {
 @end
 
 
+@protocol NSPreferencePaneCompatibility <NSObject>
+
+@optional
++ (BOOL)isCompatible;
++ (NSString *)compatibilityReason;
+
+@end
+
+
 @interface NSPreferencePane (GNUstepExtensions)
 
 - (NSString *)iconLabel;

@@ -43,12 +43,15 @@
 
   id pane;
   id prefapp;
+  BOOL disabled;
 }
 
 - (instancetype)initForPane:(id)apane
                   iconImage:(NSImage *)img
                 labelString:(NSString *)labstr;
 
+- (void)setDisabled:(BOOL)flag;
+- (BOOL)isDisabled;
 - (void)tile;
 - (NSString *)labelString;
 

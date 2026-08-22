@@ -1,6 +1,7 @@
 RPM_DISABLE_RELOCATABLE=YES
 
 include $(GNUSTEP_MAKEFILES)/common.make
+GNUSTEP_INSTALLATION_DOMAIN = SYSTEM
 
 BUNDLE_NAME = Volumes
 BUNDLE_EXTENSION = .prefPane
@@ -28,3 +29,4 @@ include $(GNUSTEP_MAKEFILES)/bundle.make
 
 -include GNUmakefile.preamble
 -include GNUmakefile.postamble
+

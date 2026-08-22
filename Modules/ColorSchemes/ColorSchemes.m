@@ -30,6 +30,8 @@
 
 @implementation ColorSchemes
 
++ (BOOL)isCompatible { return YES; }
+
 - (void) dealloc
 {
     [dictSchemes release];

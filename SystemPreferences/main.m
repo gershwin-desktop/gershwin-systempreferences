@@ -36,7 +36,44 @@ int main(int argc, char **argv, char** env)
 	CREATE_AUTORELEASE_POOL (pool);
 	NSApplication *theApp = [NSApplication sharedApplication];  
 	createMenu();  
-	[theApp setDelegate: [SystemPreferences systemPreferences]];  
+	[theApp setDelegate: [SystemPreferences systemPreferences]];
+
+	// Single-instance: if another instance is already running, forward the
+	// requested pane (or "go back to start screen") to it and exit.
+	{
+	  NSString *target = nil;
+	  NSInteger i;
+
+	  for (i = 1; i < argc; i++) {
+	    NSString *arg = [NSString stringWithUTF8String: argv[i]];
+	    if ([arg hasPrefix: @"-"] == NO) {
+	      target = arg;
+	      break;
+	    }
+	  }
+
+	  NSConnection *conn = [NSConnection connectionWithRegisteredName:
+	    kSystemPreferencesServiceName host: nil];
+	  if (conn) {
+	    [conn setRequestTimeout: 5.0];
+	    id proxy = [conn rootProxy];
+	    if (proxy) {
+	      /* Only forward and exit when the peer is actually alive.  A stale
+	         name-server entry from a killed instance must not make us exit. */
+	      BOOL forwarded = NO;
+	      NS_DURING
+	        [proxy performSelector: @selector(openPane:) withObject: target];
+	        forwarded = YES;
+	      NS_HANDLER
+	      NS_ENDHANDLER
+	      if (forwarded) {
+	        DESTROY (pool);
+	        return 0;
+	      }
+	    }
+	  }
+	}
+
 	[theApp run];	
 	DESTROY (pool);
 	return 0;

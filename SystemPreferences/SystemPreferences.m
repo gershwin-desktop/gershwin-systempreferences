@@ -59,11 +59,16 @@ static void ensureCategoryRules(void)
 }
 
 @interface SystemPreferences ()
-- (NSString *)categoryForPane:(NSPreferencePane *)pane label:(NSString *)label;
+- (NSString *)categoryForBundle:(NSBundle *)bundle label:(NSString *)label;
+- (void)openPaneFromCommandLineArguments;
+- (void)openPaneNamed:(NSString *)target;
+- (void)loadPaneBundlesAndCreateIcons;
+- (void)showCompatibilityAlertForPane:(id)pane;
 @end
 
 static SystemPreferences *systemPreferences = nil;
 static NSFileHandle *dispatchMainQueueHandle = nil;
+NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.SystemPreferencesService";
 
 @implementation SystemPreferences
 
@@ -80,12 +85,15 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 {
   [nc removeObserver: self];
   
+  [doConn invalidate];
+  RELEASE (doConn);
   RELEASE (window);
   RELEASE (panes);
   RELEASE (iconsView);
   RELEASE (prefsBox);
   RELEASE (searchField);
   RELEASE (showAllButt);
+  RELEASE (lazyPaneCache);
     
   [super dealloc];
 }
@@ -111,6 +119,7 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 	       name: @"NSPreferencePaneCancelUnselectNotification"
 	     object: nil];
 
+    lazyPaneCache = [NSMutableDictionary new];
     pendingAction = NULL;
   }
   
@@ -165,24 +174,30 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 
 - (void)applicationWillFinishLaunching:(NSNotification *)aNotification
 {
-  NSDebugLog(@"SystemPreferences: applicationWillFinishLaunching starting");
+  NSTimeInterval t_start = [NSDate timeIntervalSinceReferenceDate];
+  NSLog(@"[TIMER] applicationWillFinishLaunching started");
+
+  // Register as single-instance DO service so that a second invocation can
+  // forward its request to this instance instead of spawning a second window.
+  doConn = [[NSConnection alloc] init];
+  [doConn setRootObject: self];
+  [doConn registerName: kSystemPreferencesServiceName];
 
   // If we've already built the toolbar and search field (this can be called more than once), skip
   if (searchField != nil && prefsBox != nil) {
-    NSDebugLog(@"SystemPreferences: Already initialized, skipping");
+    NSLog(@"[TIMER] Already initialized, skipping");
     return;
   }
 
   // Integrate libdispatch main queue with GNUstep's NSRunLoop
   [self _setupDispatchMainQueueDrain];
   NSUInteger style = NSTitledWindowMask
-		   | NSClosableWindowMask
+ 		   | NSClosableWindowMask
       		   | NSMiniaturizableWindowMask;
-  NSString *bundlesDir;
-  
+
   NSDebugLog(@"SystemPreferences: Creating window");
   // Create window
-  window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 180, 651, 434)
+  window = [[NSWindow alloc] initWithContentRect: NSMakeRect(200, 180, 640, 480)
                                        styleMask: style
                                          backing: NSBackingStoreRetained
                                            defer: NO];
@@ -203,16 +218,24 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
   [topBar setAutoresizingMask: NSViewWidthSizable | NSViewMinYMargin];
   [[window contentView] addSubview: topBar];
 
-  showAllButt = [[NSButton alloc] initWithFrame: NSMakeRect(12, (toolbarHeight - 24.0) / 2.0, 88, 24)];
+  // Size per gershwin-eau-theme AppearanceMetrics.h: METRICS_BUTTON_MIN_WIDTH=100, METRICS_BUTTON_HEIGHT=20.
+  // Side margins match METRICS_CONTENT_SIDE_MARGIN (24) so the toolbar
+  // aligns with the panes below (which use 24px side margins).
+  const CGFloat toolbarSideMargin = 24.0;
+  showAllButt = [[NSButton alloc] initWithFrame: NSMakeRect(toolbarSideMargin, (toolbarHeight - 20.0) / 2.0, 100, 20)];
   [showAllButt setTitle: @"Show All"];
   [showAllButt setButtonType: NSMomentaryPushInButton];
   [showAllButt setTarget: self];
   [showAllButt setAction: @selector(showAll:)];
-  [showAllButt setEnabled: NO];
+  [showAllButt setEnabled: YES];
   [showAllButt setAutoresizingMask: NSViewMaxXMargin | NSViewMinYMargin];
   [topBar addSubview: showAllButt];
 
-  searchField = [[NSTextField alloc] initWithFrame: NSMakeRect(contentBounds.size.width - 12 - 200, (toolbarHeight - 20.0) / 2.0, 200, 20)];
+  const CGFloat searchFieldHeight = 22.0;
+  searchField = [[NSSearchField alloc] initWithFrame: NSMakeRect(contentBounds.size.width - toolbarSideMargin - 200, (toolbarHeight - searchFieldHeight) / 2.0, 200, searchFieldHeight)];
+  [searchField setDrawsBackground: NO];
+  [[searchField cell] setDrawsBackground: NO];
+  [[searchField cell] setBackgroundColor: [NSColor clearColor]];
   [searchField setPlaceholderString: @"Search"];  
   [searchField setAutoresizingMask: NSViewMinXMargin | NSViewMinYMargin];
   [topBar addSubview: searchField];
@@ -223,6 +246,17 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
   prefsBox = [[NSBox alloc] initWithFrame: NSMakeRect(0, 0, contentBounds.size.width, contentBounds.size.height - toolbarHeight)];
   [prefsBox setTitle: @""];
   [prefsBox setBorderType: NSNoBorder];  // Remove border to match reference
+  // NSBox defaults to a 5px content margin; the pane content would then sit
+  // 5px off the box's left edge while filling to the right, making a pane's
+  // own left/right side margins look asymmetric.  Zero it so each pane
+  // controls its own margins symmetrically.
+  [prefsBox setContentViewMargins: NSMakeSize(0, 0)];
+  // The box has no title; NSAtTop (the default) makes Eau's content-view
+  // sizing add 5px width and subtract ~11px height, handing panes a
+  // distorted 645x429 instead of the full 640x440.  NSNoTitle sizes the
+  // content view to the box bounds exactly, so panes laid out for 640x440
+  // fit without per-pane re-layout hacks.
+  [prefsBox setTitlePosition: NSNoTitle];
   [prefsBox setAutoresizingMask: NSViewWidthSizable | NSViewHeightSizable];
   [[window contentView] addSubview: prefsBox];
     
@@ -231,12 +265,10 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
   iconsView = [[SPIconsView alloc] initWithFrame: [[prefsBox contentView] frame]];
   [(NSBox *)prefsBox setContentView: iconsView];
   
-  // Connect search field to icons view
-  [searchField setTarget: iconsView];
-  [searchField setAction: @selector(searchFieldChanged:)];
-  // Send action continuously (on every change) rather than only at end editing
+  // Connect search field to icons view — fire on every keystroke
+  [searchField setTarget: self];
+  [searchField setAction: @selector(searchFieldDidChange:)];
   [[searchField cell] setSendsActionOnEndEditing: NO];
-  // Observe changes in the search field to update the Show All button immediately
   [nc addObserver: self
          selector: @selector(searchFieldDidChange:)
              name: NSControlTextDidChangeNotification
@@ -244,75 +276,25 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
   // Set self as delegate so we can intercept ESC (cancelOperation:) when typing in the search box
   [searchField setDelegate: self];
 
-  NSDebugLog(@"SystemPreferences: Loading preference panes from directories");
-  bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) lastObject];
-  bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
-  NSDebugLog(@"SystemPreferences: Adding panes from %@", bundlesDir);
-  [self addPanesFromDirectory: bundlesDir];
-
-  bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSLocalDomainMask, YES) lastObject];
-  bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
-  NSDebugLog(@"SystemPreferences: Adding panes from %@", bundlesDir);
-  [self addPanesFromDirectory: bundlesDir];
-
-  bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSSystemDomainMask, YES) lastObject];
-  bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
-  NSDebugLog(@"SystemPreferences: Adding panes from %@", bundlesDir);
-  [self addPanesFromDirectory: bundlesDir];
-  
-  NSDebugLog(@"SystemPreferences: Sorting panes");
-  [panes sortUsingSelector: @selector(comparePane:)];
-  
-  NSDebugLog(@"SystemPreferences: applicationWillFinishLaunching complete");
-  [showAllButt setEnabled: NO];
+  NSLog(@"[TIMER] window+UI setup: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t_start);
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification
 {
-  unsigned i;
-  
-  NSDebugLog(@"SystemPreferences: applicationDidFinishLaunching starting");
-  
-  NSDebugLog(@"SystemPreferences: Skipping saved window frame restore (window will not be moved)");
-  // Intentionally do not restore saved frame to avoid moving the window on startup.
-  NSDebugLog(@"SystemPreferences: Making window key and front");
-  [window makeKeyAndOrderFront: nil];
-  
-  NSDebugLog(@"SystemPreferences: Processing %lu panes", (unsigned long)[panes count]);
-  
-  for (i = 0; i < [panes count]; i++) {
-    CREATE_AUTORELEASE_POOL (pool);
-    NSPreferencePane *pane = [panes objectAtIndex: i];
-    NSBundle *bundle = [pane bundle];
-    NSDictionary *dict = [bundle infoDictionary];
-    
-    NSDebugLog(@"SystemPreferences: Processing pane %u", i);
-    
-    /* 
-      All the following objects are guaranted to exist because they are 
-      checked in the -initWithBundle: method of the NSPreferencePane class.    
-    */
-    NSString *iname = [dict objectForKey: @"NSPrefPaneIconFile"];
-    NSString *ipath = [bundle pathForResource: iname ofType: nil];
-    NSDebugLog(@"SystemPreferences: Loading icon from %@", ipath);
-    NSImage *image = [[NSImage alloc] initWithContentsOfFile: ipath];
-    NSString *lstr = [dict objectForKey: @"NSPrefPaneIconLabel"];
-    SPIcon *icon;
-    NSString *category = [self categoryForPane: pane label: lstr];
-    
-    NSDebugLog(@"SystemPreferences: Creating icon for %@", lstr);
-    icon = [[SPIcon alloc] initForPane: pane iconImage: image labelString: lstr];
-    NSDebugLog(@"SystemPreferences: Adding icon to view");
-    [iconsView addIcon: icon forCategory: category];
-    RELEASE (icon);
-    RELEASE (image);
-    RELEASE (pool);
-    NSDebugLog(@"SystemPreferences: Pane %u processed", i);
-  }
+  NSTimeInterval t_start = [NSDate timeIntervalSinceReferenceDate];
 
-  NSDebugLog(@"SystemPreferences: Tiling icons view");
-  [iconsView tile];
-  NSDebugLog(@"SystemPreferences: applicationDidFinishLaunching complete");
+  [window makeKeyAndOrderFront: nil];
+  NSLog(@"[TIMER] makeKeyAndOrderFront: %.4fs  launching deferred pane load",
+        [NSDate timeIntervalSinceReferenceDate] - t_start);
+
+  [self performSelector: @selector(loadPaneBundlesAndCreateIcons)
+            withObject: nil
+            afterDelay: 0.05];
+}
+
+- (BOOL)application:(NSApplication *)app openFile:(NSString *)filename
+{
+  return NO;
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)app
@@ -353,6 +335,106 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
   return YES;
 }
 
+- (void)loadPaneBundlesAndCreateIcons
+{
+  NS_DURING
+  {
+    NSTimeInterval t_start = [NSDate timeIntervalSinceReferenceDate];
+    unsigned i;
+    NSString *bundlesDir;
+    NSTimeInterval t;
+
+    bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) lastObject];
+    bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
+    t = [NSDate timeIntervalSinceReferenceDate];
+    [self addPanesFromDirectory: bundlesDir];
+    NSLog(@"[TIMER]   user panes: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
+
+    bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSLocalDomainMask, YES) lastObject];
+    bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
+    t = [NSDate timeIntervalSinceReferenceDate];
+    [self addPanesFromDirectory: bundlesDir];
+    NSLog(@"[TIMER]   local panes: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
+
+    bundlesDir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSSystemDomainMask, YES) lastObject];
+    bundlesDir = [bundlesDir stringByAppendingPathComponent: @"Bundles"];
+    t = [NSDate timeIntervalSinceReferenceDate];
+    [self addPanesFromDirectory: bundlesDir];
+    NSLog(@"[TIMER]   system panes: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
+
+    t = [NSDate timeIntervalSinceReferenceDate];
+    [panes sortUsingComparator: ^NSComparisonResult(id a, id b) {
+      NSString *la = [[a infoDictionary] objectForKey: @"NSPrefPaneIconLabel"];
+      NSString *lb = [[b infoDictionary] objectForKey: @"NSPrefPaneIconLabel"];
+      return [la compare: lb];
+    }];
+    NSLog(@"[TIMER]   sort: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
+
+    NSTimeInterval t_icons = [NSDate timeIntervalSinceReferenceDate];
+    for (i = 0; i < [panes count]; i++) {
+      NSTimeInterval t_pane = [NSDate timeIntervalSinceReferenceDate];
+      CREATE_AUTORELEASE_POOL (pool);
+      NSBundle *bundle = [panes objectAtIndex: i];
+      NSDictionary *dict = [bundle infoDictionary];
+
+      NSString *iname = [dict objectForKey: @"NSPrefPaneIconFile"];
+      NSString *ipath = [bundle pathForResource: iname ofType: nil];
+      NSImage *image = [[NSImage alloc] initWithContentsOfFile: ipath];
+      NSString *lstr = [dict objectForKey: @"NSPrefPaneIconLabel"];
+      SPIcon *icon;
+      NSString *category = [self categoryForBundle: bundle label: lstr];
+
+      icon = [[SPIcon alloc] initForPane: bundle iconImage: image labelString: lstr];
+
+      volatile Class principalClass = Nil;
+      NS_DURING
+        principalClass = [bundle principalClass];
+      NS_HANDLER
+        NSLog(@"PrefPane '%@': principalClass load failed (%@)", lstr, localException);
+        principalClass = Nil;
+      NS_ENDHANDLER
+
+      if (principalClass == Nil) {
+        [icon setDisabled: YES];
+        NSLog(@"PrefPane '%@' disabled: principalClass could not be loaded", lstr);
+      } else if ([principalClass respondsToSelector: @selector(isCompatible)]
+          && [principalClass isCompatible] == NO) {
+        [icon setDisabled: YES];
+        NSString *reason = nil;
+        if ([principalClass respondsToSelector: @selector(compatibilityReason)]) {
+          reason = [principalClass compatibilityReason];
+        }
+        if (reason == nil) {
+          reason = [dict objectForKey: @"NSPrefPaneCompatibilityReason"];
+        }
+        NSLog(@"PrefPane '%@' disabled: incompatible with this system%@",
+              lstr, reason ? [NSString stringWithFormat: @" (%@)", reason] : @"");
+      }
+
+      [iconsView addIcon: icon forCategory: category];
+      RELEASE (icon);
+      RELEASE (image);
+      RELEASE (pool);
+      NSLog(@"[TIMER]   icon %u/%u '%@': %.4fs", i + 1, (unsigned)[panes count], lstr,
+            [NSDate timeIntervalSinceReferenceDate] - t_pane);
+    }
+    NSLog(@"[TIMER]   icons total: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t_icons);
+
+    NSTimeInterval t_tile = [NSDate timeIntervalSinceReferenceDate];
+    [iconsView tile];
+    NSLog(@"[TIMER]   tile: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t_tile);
+
+    [self openPaneFromCommandLineArguments];
+    NSLog(@"[TIMER] loadPaneBundlesAndCreateIcons total: %.4fs",
+          [NSDate timeIntervalSinceReferenceDate] - t_start);
+  }
+  NS_HANDLER
+  {
+    NSLog(@"PrefPane loading failed: %@", localException);
+  }
+  NS_ENDHANDLER
+}
+
 - (void)addPanesFromDirectory:(NSString *)dir
 {
   NSArray *bnames = [fm directoryContentsAtPath: dir];
@@ -362,33 +444,34 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
     NSString *bname = [bnames objectAtIndex: i];
 
     if ([[bname pathExtension] isEqual: @"prefPane"]) {
+      NSTimeInterval t0 = [NSDate timeIntervalSinceReferenceDate];
       CREATE_AUTORELEASE_POOL (pool);
       NSString *bpath = [dir stringByAppendingPathComponent: bname];
-      NSBundle *bundle = [NSBundle bundleWithPath: bpath]; 
+      NSBundle *bundle = [NSBundle bundleWithPath: bpath];
       
       if (bundle) {
-        Class principalClass = [bundle principalClass];
-        NSPreferencePane *pane;
-      
-        NS_DURING
-          {
-            pane = [[principalClass alloc] initWithBundle: bundle];
-            
-            if ([panes containsObject: pane] == NO) {     
-              [panes addObject: pane];
+        NSString *bundleID = [bundle bundleIdentifier];
+        BOOL isDuplicate = NO;
+
+        if (bundleID != nil) {
+          for (id existing in panes) {
+            if ([[existing bundleIdentifier] isEqual: bundleID]) {
+              isDuplicate = YES;
+              break;
             }
-            
-            RELEASE (pane);
           }
-        NS_HANDLER
-          {
-            NSRunAlertPanel(nil, 
-                [NSString stringWithFormat: @"Bad pane bundle at: %@!", bpath], 
-                            @"OK", 
-                            nil, 
-                            nil);  
-          }
-        NS_ENDHANDLER
+        }
+
+        if (isDuplicate || [panes containsObject: bundle]) {
+          NSLog(@"[TIMER]   skip dup %@: %.4fs", bname, [NSDate timeIntervalSinceReferenceDate] - t0);
+          RELEASE (pool);
+          continue;
+        }
+
+        [panes addObject: bundle];
+        NSLog(@"[TIMER]   queued %@: %.4fs", bname, [NSDate timeIntervalSinceReferenceDate] - t0);
+      } else {
+        NSLog(@"[TIMER]   load %@: no bundle (%.4fs)", bname, [NSDate timeIntervalSinceReferenceDate] - t0);
       }
       
       RELEASE (pool);
@@ -410,6 +493,86 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 
 - (void)clickOnIconOfPane:(id)pane
 {
+  if ([pane isKindOfClass: [NSBundle class]]) {
+    NSBundle *bndl = (NSBundle *)pane;
+    NSString *bid = [bndl bundleIdentifier];
+    NSPreferencePane *cached = [lazyPaneCache objectForKey: bid];
+
+    if (cached != nil) {
+      pane = cached;
+    } else {
+      NSTimeInterval t = [NSDate timeIntervalSinceReferenceDate];
+      volatile int saved_stderr = -1;
+      volatile int err_fd = -1;
+
+      /* Capture stderr during bundle loading to get the actual
+       * runtime error (e.g. "undefined symbol") */
+      saved_stderr = dup(STDERR_FILENO);
+      int pipefd[2];
+      if (pipe(pipefd) == 0)
+        {
+          err_fd = pipefd[0];
+          dup2(pipefd[1], STDERR_FILENO);
+          close(pipefd[1]);
+        }
+
+      NS_DURING
+        {
+          Class principalClass = [bndl principalClass];
+
+          /* Restore stderr */
+          if (saved_stderr >= 0)
+            {
+              dup2(saved_stderr, STDERR_FILENO);
+              close(saved_stderr);
+              saved_stderr = -1;
+            }
+
+          /* Read captured error output */
+          NSString *loadError = nil;
+          if (err_fd >= 0)
+            {
+              char buf[4096];
+              ssize_t n = read(err_fd, buf, sizeof(buf) - 1);
+              close(err_fd);
+              err_fd = -1;
+              if (n > 0)
+                {
+                  buf[n] = '\0';
+                  loadError = [NSString stringWithUTF8String: buf];
+                }
+            }
+
+          if (principalClass == nil)
+            {
+              NSString *msg = loadError ?: @"principal class is nil";
+              [NSException raise: NSGenericException
+                          format: @"%@", msg];
+            }
+          pane = [[principalClass alloc] initWithBundle: bndl];
+        }
+      NS_HANDLER
+        {
+          /* Ensure stderr is restored in the exception handler too */
+          if (saved_stderr >= 0)
+            {
+              dup2(saved_stderr, STDERR_FILENO);
+              close(saved_stderr);
+            }
+          if (err_fd >= 0)
+            {
+              close(err_fd);
+            }
+        }
+        NSLog(@"Failed to init pane %@: %@", bid, localException);
+        return;
+      NS_ENDHANDLER
+      NSLog(@"[TIMER]   lazy-init %@: %.4fs", bid, [NSDate timeIntervalSinceReferenceDate] - t);
+      [lazyPaneCache setObject: pane forKey: bid];
+      [pane autorelease];
+    }
+  }
+
   // Unselect the previous pane before selecting the new one so that
   // timers, tasks and other resources are properly cleaned up.
   if (currentPane != nil && currentPane != pane) {
@@ -485,7 +648,6 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
       [searchField setStringValue: @""];
     }
     [iconsView showAllIcons];
-    [showAllButt setEnabled: NO];
   }
 }
 
@@ -514,7 +676,6 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
     // Do not resize or animate the window when returning to icons view.
 
     currentPane = nil;
-    [showAllButt setEnabled: NO];
   }
 }
 
@@ -528,15 +689,6 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
 
 - (void)searchFieldDidChange:(NSNotification *)notif
 {
-  NSString *s = [searchField stringValue];
-
-  if (s && [s length] > 0) {
-    [showAllButt setEnabled: YES];
-  } else {
-    // If there's no search text, only enable Show All if a pane is selected
-    [showAllButt setEnabled: (currentPane != nil)];
-  }
-
   // Forward to icons view to trigger filtering immediately
   if ([iconsView respondsToSelector: @selector(searchFieldChanged:)]) {
     [iconsView searchFieldChanged: searchField];
@@ -575,14 +727,96 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
   [window close];
 }
 
+- (void)openPaneFromCommandLineArguments
+{
+  NSArray *args = [[NSProcessInfo processInfo] arguments];
+  NSUInteger i;
+  NSString *target = nil;
+
+  for (i = 1; i < [args count]; i++) {
+    NSString *arg = [args objectAtIndex: i];
+    if (![arg hasPrefix: @"-"]) {
+      target = arg;
+      break;
+    }
+  }
+
+  if (target == nil) {
+    return;
+  }
+
+  [self openPaneNamed: target];
+}
+
+- (void)openPaneNamed:(NSString *)target
+{
+  for (NSBundle *bndl in panes) {
+    NSString *paneName = [[bndl bundlePath] lastPathComponent];
+
+    if (paneName != nil) {
+      paneName = [paneName stringByDeletingPathExtension];
+    }
+
+    if ([[bndl bundleIdentifier] isEqualToString: target]
+        || [paneName isEqualToString: target]) {
+      [window makeFirstResponder: nil];
+      [self clickOnIconOfPane: bndl];
+      break;
+    }
+  }
+}
+
+- (oneway void)openPane:(NSString *)target
+{
+  if (window == nil) {
+    return;
+  }
+
+  if ([target length] == 0) {
+    [self showIconsView];
+  } else {
+    [self openPaneNamed: target];
+  }
+
+  [window makeKeyAndOrderFront: nil];
+  [NSApp activateIgnoringOtherApps: YES];
+}
+
 - (void)updateDefaults
 {
   // Intentionally do not save the window frame to avoid moving it on future launches.
 }
 
-- (NSString *)categoryForPane:(NSPreferencePane *)pane label:(NSString *)label
+- (void)showCompatibilityAlertForPane:(id)pane
 {
-  NSDictionary *info = [[pane bundle] infoDictionary];
+  NSString *reason = nil;
+  if ([pane isKindOfClass: [NSBundle class]]) {
+    NS_DURING
+    {
+      Class pc = [(NSBundle *)pane principalClass];
+      if ([pc respondsToSelector: @selector(compatibilityReason)]) {
+        reason = [pc compatibilityReason];
+      }
+    }
+    NS_HANDLER
+    {
+      NSLog(@"showCompatibilityAlertForPane: %@", localException);
+    }
+    NS_ENDHANDLER
+    if (reason == nil) {
+      reason = [[(NSBundle *)pane infoDictionary] objectForKey: @"NSPrefPaneCompatibilityReason"];
+    }
+  }
+  if (reason == nil) {
+    reason = @"This preference pane is not compatible with your system.";
+  }
+  NSLog(@"NSRunAlertPanel: Not Compatible — %@", reason);
+  NSRunAlertPanel(@"Not Compatible", reason, @"OK", nil, nil);
+}
+
+- (NSString *)categoryForBundle:(NSBundle *)bundle label:(NSString *)label
+{
+  NSDictionary *info = [bundle infoDictionary];
   NSString *category = [info objectForKey: @"NSPrefPaneCategory"];
 
   if ([category length] > 0) {
@@ -596,7 +830,7 @@ static NSFileHandle *dispatchMainQueueHandle = nil;
     lowerLabel = @"";
   }
 
-  NSString *bundleID = [[[pane bundle] bundleIdentifier] lowercaseString];
+  NSString *bundleID = [[bundle bundleIdentifier] lowercaseString];
   if (bundleID == nil) {
     bundleID = @"";
   }

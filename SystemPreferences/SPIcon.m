@@ -5,6 +5,7 @@
 
 #import "SPIcon.h"
 #import "SystemPreferences.h"
+#import "PreferencePanes.h"
 
 #include <math.h>
 #import <AppKit/AppKit.h>
@@ -14,7 +15,6 @@ static const CGFloat kIconBottomMargin = 2.0;
 static const CGFloat kLabelPadding = 2.0;
 static const CGFloat kLabelLineSpacing = 0.5;  // reduced for tighter labels
 static const CGFloat kLabelFontSize = 10.0;
-static const NSUInteger kMaxLabelLines = 2;
 
 static inline double myrintf(double value)
 {
@@ -71,6 +71,7 @@ static inline double myrintf(double value)
 - (void)mouseDown:(NSEvent *)theEvent
 {
   (void)theEvent;
+  if (disabled) return;
   drawicon = selicon ?: icon;
   [self setNeedsDisplay:YES];
 }
@@ -78,6 +79,12 @@ static inline double myrintf(double value)
 - (void)mouseUp:(NSEvent *)theEvent
 {
   (void)theEvent;
+  if (disabled) {
+    [prefapp performSelector: @selector(showCompatibilityAlertForPane:)
+                 withObject: pane
+                 afterDelay: 0];
+    return;
+  }
   drawicon = icon;
   [self setNeedsDisplay:YES];
   if (prefapp && pane) {
@@ -118,52 +125,30 @@ static inline double myrintf(double value)
   }
 
   NSDictionary *attributes = @{NSFontAttributeName:[NSFont systemFontOfSize:kLabelFontSize]};
-  NSMutableArray<NSString *> *result = [NSMutableArray arrayWithCapacity:kMaxLabelLines];
-  NSArray<NSString *> *paragraphs = [label componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
+  NSString *line = label;
 
-  for (NSString *paragraph in paragraphs) {
-    if (result.count >= kMaxLabelLines) {
-      break;
-    }
-    NSString *trimmed = [paragraph stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    if (!trimmed.length) {
-      continue;
-    }
-    NSArray<NSString *> *words = [trimmed componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    NSMutableString *current = [NSMutableString string];
-
-    for (NSString *word in words) {
-      if (!word.length) {
-        continue;
+  /* Single line, truncated with an ellipsis when it does not fit. */
+  CGSize size = [line sizeWithAttributes:attributes];
+  if (size.width > maxWidth) {
+    NSString *ellipsis = @"\u2026";
+    NSMutableString *shortened = [NSMutableString string];
+    NSUInteger i = 0;
+    while (i < [line length]) {
+      NSRange r = [line rangeOfComposedCharacterSequenceAtIndex: i];
+      [shortened appendString: [line substringWithRange: r]];
+      i = NSMaxRange(r);
+      NSString *candidate = [shortened stringByAppendingString: ellipsis];
+      if ([candidate sizeWithAttributes:attributes].width > maxWidth) {
+        [shortened deleteCharactersInRange:
+          NSMakeRange([shortened length] - r.length, r.length)];
+        break;
       }
-      if (!current.length) {
-        [current appendString:word];
-        continue;
-      }
-      NSString *candidate = [NSString stringWithFormat:@"%@ %@", current, word];
-      CGSize size = [candidate sizeWithAttributes:attributes];
-      if (size.width > maxWidth && result.count < kMaxLabelLines - 1) {
-        [result addObject:[current copy]];
-        [current setString:word];
-        if (result.count >= kMaxLabelLines) {
-          break;
-        }
-        continue;
-      }
-      [current setString:candidate];
     }
-    if (current.length && result.count < kMaxLabelLines) {
-      [result addObject:[current copy]];
-    }
+    [shortened appendString: ellipsis];
+    line = shortened;
   }
 
-  if (!result.count) {
-    [result addObject:label];
-  }
-  if (result.count > kMaxLabelLines) {
-    return [result subarrayWithRange:NSMakeRange(0, kMaxLabelLines)];
-  }
-  return result;
+  return @[line];
 }
 
 - (void)drawRect:(NSRect)dirtyRect
@@ -182,14 +167,15 @@ static inline double myrintf(double value)
         [iconToDraw drawInRect:iconRect
            fromRect:NSZeroRect
           operation:NSCompositeSourceOver
-           fraction:1.0
+           fraction:(disabled ? 0.3 : 1.0)
          respectFlipped:YES
               hints:nil];
   }
 
+  NSColor *textColor = disabled ? [NSColor disabledControlTextColor] : [NSColor labelColor];
   if (labelLines.count) {
     NSDictionary *attributes = @{NSFontAttributeName:[NSFont systemFontOfSize:kLabelFontSize],
-                                 NSForegroundColorAttributeName:[NSColor labelColor]};
+                                 NSForegroundColorAttributeName:textColor};
     CGFloat labelY = NSMinY(iconRect) - kLabelPadding;
     for (NSString *line in labelLines) {
       CGSize textSize = [line sizeWithAttributes:attributes];
@@ -198,6 +184,17 @@ static inline double myrintf(double value)
       labelY -= (textSize.height + kLabelLineSpacing);
     }
   }
+}
+
+- (void)setDisabled:(BOOL)flag
+{
+  disabled = flag;
+  [self setNeedsDisplay:YES];
+}
+
+- (BOOL)isDisabled
+{
+  return disabled;
 }
 
 - (NSImage *)darkerIconFromImage:(NSImage *)source
