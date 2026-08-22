@@ -39,54 +39,59 @@
 @class NSBox;
 @class DefaultEntry;
 @class NSPopUpButton;
+@class NSSearchField;
+@class NSTextView;
 
-@interface Defaults : NSPreferencePane 
+@interface Defaults : NSPreferencePane <NSTextFieldDelegate>
 {
-  IBOutlet id namesScroll;
+  NSView *mainView;
+
+  NSSearchField *filterField;  
+  NSScrollView *namesScroll;
   NSMatrix *namesMatrix;  
-  IBOutlet id categoryLabel;
-  IBOutlet id categoryField;
-  IBOutlet id descriptionLabel;
-  IBOutlet id descriptionView;
-  IBOutlet NSBox *editorBox;
-
-  IBOutlet id editorsWin;
-  
-  IBOutlet id stringEditorBox;
-  IBOutlet id stringEdField;
-  IBOutlet id stringEdDefaultRevert;
-  IBOutlet id stringEdSet;  
-  
-  IBOutlet id boolEditorBox;
-  IBOutlet id boolEdPopup;
-  IBOutlet id boolEdDefaultRevert;
-  IBOutlet id boolEdSet;  
-  
-  IBOutlet id numberEditorBox;
-  IBOutlet id numberEdField;
-  IBOutlet id numberEdDefaultRevert;
-  IBOutlet id numberEdSet;  
+  NSTextField *categoryLabel;
+  NSTextField *categoryField;
+  NSTextField *descriptionLabel;
+  NSTextView *descriptionView;
+  NSBox *editorBox;
     
-  IBOutlet id arrayEditorBox;
-  IBOutlet id arrayEdScroll;
+  NSView *stringEditorBox;
+  NSTextField *stringEdField;
+  NSButton *stringEdDefaultRevert;
+  NSButton *stringEdSet;  
+    
+  NSView *boolEditorBox;
+  NSPopUpButton *boolEdPopup;
+  NSButton *boolEdDefaultRevert;
+  NSButton *boolEdSet;  
+    
+  NSView *numberEditorBox;
+  NSTextField *numberEdField;
+  NSButton *numberEdDefaultRevert;
+  NSButton *numberEdSet;  
+      
+  NSView *arrayEditorBox;
+  NSScrollView *arrayEdScroll;
   NSMatrix *arrayEdMatrix;  
-  IBOutlet id arrayEdField;
-  IBOutlet id arrayEdAdd;
-  IBOutlet id arrayEdRemove;  
-  IBOutlet id arrayEdDefaultRevert;
-  IBOutlet id arrayEdSet;
+  NSTextField *arrayEdField;
+  NSButton *arrayEdAdd;
+  NSButton *arrayEdRemove;  
+  NSButton *arrayEdDefaultRevert;
+  NSButton *arrayEdSet;
 
-  IBOutlet NSBox *listEditorBox;
-  IBOutlet NSPopUpButton *listEdPopup;
-  IBOutlet NSButton *listEdDefaultRevert;
-  IBOutlet NSButton *listEdSet;  
+  NSView *listEditorBox;
+  NSPopUpButton *listEdPopup;
+  NSButton *listEdDefaultRevert;
+  NSButton *listEdSet;  
 
   NSMutableArray *defaultsEntries;
-  DefaultEntry *currentEntry;   
-  id filterField;
-    
-  BOOL loaded;
+  DefaultEntry *currentEntry;    
 }
+
+// The whole UI is built in code (no gorm) so that spacing follows
+// AppearanceMetrics.h exactly and survives window resizing.
+- (NSView *)createMainView;
+- (void)relayoutSubviewsForSize:(NSSize)size;
 
 - (DefaultEntry *)entryWithName:(NSString *)name;
 

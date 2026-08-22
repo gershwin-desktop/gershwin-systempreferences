@@ -25,184 +25,536 @@
 
 #import <AppKit/AppKit.h>
 #import "Defaults.h"
+#import "AppearanceMetrics.h"
 
 #include <limits.h>  // For INT_MAX and INT_MIN
+
+/* The pane view. When the host box gives us a size (which is not the
+   640x440 base we built at), re-lay out everything so margins stay
+   symmetric and rows stay top-anchored. */
+@interface DefaultsMainView : NSView
+{
+  Defaults *_layoutOwner;
+}
+@end
+
+@implementation DefaultsMainView
+- (void)setFrameSize:(NSSize)newSize
+{
+  [super setFrameSize:newSize];
+  [_layoutOwner relayoutSubviewsForSize:newSize];
+}
+- (void)viewDidMoveToWindow
+{
+  [super viewDidMoveToWindow];
+  if ([self window] && [self superview]) {
+    /* The host box does not necessarily size the pane view to its content
+       area; make it fill the box content and re-lay out. GNUstep's
+       setFrame: bypasses setFrameSize:, so re-lay out explicitly here. */
+    [self setFrame:[[self superview] bounds]];
+    [_layoutOwner relayoutSubviewsForSize:[self bounds].size];
+  }
+}
+- (void)setLayoutOwner:(Defaults *)owner
+{
+  _layoutOwner = owner;
+}
+@end
 
 @implementation Defaults
 
 + (BOOL)isCompatible { return YES; }
 
+/* No gorm: the whole pane is built in code so that spacing follows
+   AppearanceMetrics.h exactly and survives window resizing. */
+- (NSView *)loadMainView
+{
+  if (_mainView == nil) {
+    _mainView = [[self createMainView] retain];
+  }
+  return _mainView;
+}
+
+- (NSString *)mainNibName
+{
+  return nil;
+}
+
 - (void)dealloc
 {
   TEST_RELEASE (defaultsEntries);
-  TEST_RELEASE (stringEditorBox);
-  TEST_RELEASE (boolEditorBox);
-  TEST_RELEASE (numberEditorBox);
-  TEST_RELEASE (arrayEditorBox);
-  TEST_RELEASE (listEditorBox);
+  TEST_RELEASE (mainView);
   TEST_RELEASE (filterField);
-  
+  TEST_RELEASE (namesScroll);
+  TEST_RELEASE (categoryLabel);
+  TEST_RELEASE (categoryField);
+  TEST_RELEASE (descriptionLabel);
+  TEST_RELEASE (descriptionView);
+  TEST_RELEASE (editorBox);
+  TEST_RELEASE (stringEditorBox);
+  TEST_RELEASE (stringEdField);
+  TEST_RELEASE (stringEdDefaultRevert);
+  TEST_RELEASE (stringEdSet);
+  TEST_RELEASE (boolEditorBox);
+  TEST_RELEASE (boolEdPopup);
+  TEST_RELEASE (boolEdDefaultRevert);
+  TEST_RELEASE (boolEdSet);
+  TEST_RELEASE (numberEditorBox);
+  TEST_RELEASE (numberEdField);
+  TEST_RELEASE (numberEdDefaultRevert);
+  TEST_RELEASE (numberEdSet);
+  TEST_RELEASE (arrayEditorBox);
+  TEST_RELEASE (arrayEdScroll);
+  TEST_RELEASE (arrayEdField);
+  TEST_RELEASE (arrayEdAdd);
+  TEST_RELEASE (arrayEdRemove);
+  TEST_RELEASE (arrayEdDefaultRevert);
+  TEST_RELEASE (arrayEdSet);
+  TEST_RELEASE (listEditorBox);
+  TEST_RELEASE (listEdPopup);
+  TEST_RELEASE (listEdDefaultRevert);
+  TEST_RELEASE (listEdSet);
+
   [super dealloc];
 }
 
-- (void)mainViewDidLoad
+#pragma mark - UI builders
+
+/* A plain non-editable label. Returned retained; ownership passes to the
+   caller's ivar. */
+- (NSTextField *)labelWithText:(NSString *)text
+                         frame:(NSRect)frame
+                     alignment:(NSTextAlignment)alignment
 {
-  if (loaded == NO) {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSBundle *bundle = [self bundle];
-    NSString *dictpath = [bundle pathForResource: @"Defaults" ofType: @"plist"];
-    NSDictionary *dict = [NSDictionary dictionaryWithContentsOfFile: dictpath];
-    NSArray *keys = [[dict allKeys] sortedArrayUsingSelector: @selector(compare:)];
-    id cell;
-    float fonth;
-    NSUInteger i;
-    
-    RETAIN (stringEditorBox);
-    [stringEditorBox removeFromSuperview];
-    RETAIN (boolEditorBox);
-    [boolEditorBox removeFromSuperview];
-    RETAIN (numberEditorBox);
-    [numberEditorBox removeFromSuperview];
-    RETAIN (arrayEditorBox);
-    [arrayEditorBox removeFromSuperview];
-    RETAIN (listEditorBox);
-    [listEditorBox removeFromSuperview];
-    RELEASE (editorsWin);
-    
-    [defaults synchronize];
-    defaultsEntries = [NSMutableArray new];
-    
-    for (i = 0; i < [keys count]; i++) {
-      NSString *defname = [keys objectAtIndex: i];
-      NSDictionary *info = [dict objectForKey: defname];
-      NSString *category = [info objectForKey: @"category"];
-      NSString *description;
-      NSArray *values = [info objectForKey: @"values"];
-      id defvalue = [info objectForKey: @"defaultvalue"];
-      int edtype = [[info objectForKey: @"editor"] intValue];
-      DefaultEntry *entry;
-      
-      description = [bundle localizedStringForKey:defname value:@"Description not found" table:nil];
-      entry = [[DefaultEntry alloc] initWithUserDefaults: defaults
-                                                withName: defname 
-                                              inCategory: category
-                                             description: description
-						  values: values
-                                            defaultValue: defvalue 
-                                             editorType: edtype];
-      [defaultsEntries addObject: entry];
-      RELEASE (entry);
-    }
-    
-    [namesScroll setBorderType: NSBezelBorder];
-    [namesScroll setHasHorizontalScroller: NO];
-    [namesScroll setHasVerticalScroller: YES]; 
+  NSTextField *label = [[NSTextField alloc] initWithFrame:frame];
 
-    cell = [NSBrowserCell new];
-    fonth = [[cell font] defaultLineHeightForFont];
+  [label setStringValue:text ?: @""];
+  [label setBezeled:NO];
+  [label setBordered:NO];
+  [label setEditable:NO];
+  [label setSelectable:NO];
+  [label setDrawsBackground:NO];
+  [label setFont:METRICS_FONT_SYSTEM_REGULAR_11];
+  [label setAlignment:alignment];
+  return label;
+}
 
-    namesMatrix = [[NSMatrix alloc] initWithFrame: NSMakeRect(0, 0, 100, 100)
-                                             mode: NSRadioModeMatrix 
-                                        prototype: cell
-                                     numberOfRows: 0 
-                                  numberOfColumns: 0];
-    RELEASE (cell);                     
-    [namesMatrix setIntercellSpacing: NSZeroSize];
-    [namesMatrix setCellSize: NSMakeSize([namesScroll contentSize].width, fonth)];
-    [namesMatrix setAutoscroll: YES];
-    [namesMatrix setAllowsEmptySelection: YES];
-    [namesMatrix setTarget: self]; 
-    [namesMatrix setAction: @selector(namesMatrixAction:)]; 
-    [namesScroll setDocumentView: namesMatrix];	
-    RELEASE (namesMatrix);
-    
-    for (i = 0; i < [defaultsEntries count]; i++) {
-      DefaultEntry *entry = [defaultsEntries objectAtIndex: i];
-      NSString *name = [entry name];
-      NSUInteger count = [[namesMatrix cells] count];
-      
-      [namesMatrix insertRow: count];
-      cell = [namesMatrix cellAtRow: count column: 0];   
-      [cell setStringValue: name];
-      [cell setLeaf: YES];  
-    }
-    
-    [namesMatrix sizeToCells]; 
-    
-    {
-      NSRect parentBounds = [[namesScroll superview] bounds];
-      CGFloat searchH = 22.0;
-      CGFloat pad = 4.0;
+/* A push button, initially disabled (enablement is driven by selection).
+   Returned retained; ownership passes to the caller's ivar. */
+- (NSButton *)buttonWithTitle:(NSString *)title
+                        frame:(NSRect)frame
+                       action:(SEL)action
+{
+  NSButton *button = [[NSButton alloc] initWithFrame:frame];
 
-      [namesScroll setFrame: NSMakeRect(0, 0,
-                                        parentBounds.size.width,
-                                        parentBounds.size.height - searchH - pad)];
+  [button setTitle:title];
+  [button setButtonType:NSMomentaryPushInButton];
+  [button setBezelStyle:NSRoundedBezelStyle];
+  [button setTarget:self];
+  [button setAction:action];
+  [button setEnabled:NO];
+  return button;
+}
 
-      filterField = [[NSSearchField alloc] initWithFrame:
-        NSMakeRect(0, parentBounds.size.height - searchH,
-                   parentBounds.size.width, searchH)];
-      [filterField setDrawsBackground: NO];
-      [[filterField cell] setDrawsBackground: NO];
-      [[filterField cell] setBackgroundColor: [NSColor clearColor]];
-      [filterField setPlaceholderString: @"Search"];
-      [filterField setTarget: self];
-      [filterField setAction: @selector(filterDefaults:)];
-      [[filterField cell] setSendsActionOnEndEditing: NO];
-      [filterField setAutoresizingMask: NSViewWidthSizable | NSViewMinYMargin];
-      [[namesScroll superview] addSubview: filterField];
-    }
-        
-    [descriptionView setFont: [NSFont systemFontOfSize: 10]];
-    [descriptionView setDrawsBackground: NO];
-    // FIXME can't turn off this attribute in Gorm at present
-    [descriptionView setEditable: NO];
+/* The shared trailing button row of every editor: "Default value"
+   (revert) on the left of "Set", hugging the container's bottom-trailing
+   corner. Buttons start disabled; enablement is driven by selection and
+   editing. */
+- (void)addRevertButton:(NSButton **)revertOut
+           revertAction:(SEL)revertAction
+              setButton:(NSButton **)setOut
+             setAction:(SEL)setAction
+           toContainer:(NSView *)container
+{
+  CGFloat cw = [container frame].size.width;
+  CGFloat pad = METRICS_SPACE_16;
+  CGFloat bottomY = METRICS_SPACE_12;
 
-    currentEntry = nil;    
-    loaded = YES;
-        
-    // String
-    [stringEdField setStringValue: @""];
-    [stringEdField setDelegate: self];
-    
-    // Bool
-    [boolEdPopup selectItemAtIndex: 0];
+  *setOut = [self buttonWithTitle:@"Set"
+                            frame:NSMakeRect(cw - pad - METRICS_BUTTON_MIN_WIDTH,
+                                             bottomY,
+                                             METRICS_BUTTON_MIN_WIDTH,
+                                             METRICS_BUTTON_HEIGHT)
+                          action:setAction];
+  [*setOut setAutoresizingMask:NSViewMinXMargin | NSViewMaxYMargin];
+  [container addSubview:*setOut];
 
-    // Number
-    [numberEdField setStringValue: @""];
-    [numberEdField setDelegate: self];
-    
-    // Array
-    [arrayEdField setStringValue: @""];
-    [arrayEdField setDelegate: self];
-    
-    [arrayEdScroll setBorderType: NSBezelBorder];
-    [arrayEdScroll setHasHorizontalScroller: NO];
-    [arrayEdScroll setHasVerticalScroller: YES]; 
-    
-    arrayEdMatrix = [[NSMatrix alloc] initWithFrame: NSMakeRect(0, 0, 100, 100)
-                                               mode: NSRadioModeMatrix 
-                                          prototype: cell
-                                       numberOfRows: 0 
-                                    numberOfColumns: 0];
-    [arrayEdMatrix setIntercellSpacing: NSZeroSize];
-    [arrayEdMatrix setCellSize: NSMakeSize([arrayEdScroll contentSize].width, fonth)];
-    [arrayEdMatrix setAutoscroll: YES];
-    [arrayEdMatrix setAllowsEmptySelection: YES];
-    [arrayEdMatrix setTarget: self]; 
-    [arrayEdMatrix setAction: @selector(arrayEdMatrixAction:)]; 
-    [arrayEdScroll setDocumentView: arrayEdMatrix];
-    RELEASE (arrayEdMatrix);
+  *revertOut = [self buttonWithTitle:@"Default value"
+                              frame:NSMakeRect(cw - pad - METRICS_BUTTON_MIN_WIDTH
+                                                 - METRICS_BUTTON_HORIZ_INTERSPACE
+                                                 - 110,
+                                               bottomY, 110,
+                                               METRICS_BUTTON_HEIGHT)
+                            action:revertAction];
+  [*revertOut setAutoresizingMask:NSViewMinXMargin | NSViewMaxYMargin];
+  [container addSubview:*revertOut];
+}
 
-    // List
-    [listEdPopup selectItemAtIndex: 0];
+/* A small square "+" or "-" list-maintenance button. */
+- (NSButton *)miniButtonWithTitle:(NSString *)title
+                            frame:(NSRect)frame
+                           action:(SEL)action
+{
+  NSButton *button = [[NSButton alloc] initWithFrame:frame];
 
-  
-    [self disableControls];
+  [button setTitle:title];
+  [button setButtonType:NSMomentaryPushInButton];
+  [button setBezelStyle:NSRegularSquareBezelStyle];
+  [button setTarget:self];
+  [button setAction:action];
+  [button setEnabled:NO];
+  return button;
+}
 
-    /* set some locales */
-    [categoryLabel setStringValue: [bundle localizedStringForKey:@"category" value:@"n/f" table:nil]];
-    [descriptionLabel setStringValue: [bundle localizedStringForKey:@"description" value:@"n/f" table:nil]];
+/* A bezel-bordered scroll view hosting a single-column radio matrix of
+   browser cells; used for the names list and for the array editor list. */
+- (NSScrollView *)matrixListScrollWithFrame:(NSRect)frame
+                                     action:(SEL)action
+                                  matrixOut:(NSMatrix **)matrixOut
+{
+  NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:frame];
+  NSBrowserCell *protoCell = [NSBrowserCell new];
+  CGFloat lineH = [[protoCell font] defaultLineHeightForFont];
+  NSMatrix *matrix = [[NSMatrix alloc] initWithFrame: NSMakeRect(0, 0, 100, 100)
+                                                mode: NSRadioModeMatrix
+                                           prototype: protoCell
+                                        numberOfRows: 0
+                                     numberOfColumns: 0];
+
+  RELEASE (protoCell);
+  [scroll setBorderType: NSBezelBorder];
+  [scroll setHasHorizontalScroller: NO];
+  [scroll setHasVerticalScroller: YES];
+  [matrix setIntercellSpacing: NSZeroSize];
+  [matrix setCellSize: NSMakeSize([scroll contentSize].width, lineH)];
+  [matrix setAutoscroll: YES];
+  [matrix setAllowsEmptySelection: YES];
+  [matrix setTarget: self];
+  [matrix setAction: action];
+  [scroll setDocumentView: matrix];
+  RELEASE (matrix);
+  *matrixOut = matrix;
+  return scroll;
+}
+
+/* Editors live in plain containers swapped into editorBox via
+   setContentView:, which sizes them to the box's content area; internal
+   layout therefore relies on autoresizing masks only. */
+
+- (NSView *)makeStringEditor
+{
+  const CGFloat cw = 300, ch = 80;
+  NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, cw, ch)];
+
+  stringEdField = [[NSTextField alloc] initWithFrame:
+    NSMakeRect(METRICS_SPACE_16,
+               ch - METRICS_SPACE_16 - METRICS_TEXT_INPUT_FIELD_HEIGHT,
+               cw - 2 * METRICS_SPACE_16, METRICS_TEXT_INPUT_FIELD_HEIGHT)];
+  [stringEdField setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
+  [stringEdField setDelegate:self];
+  [container addSubview:stringEdField];
+
+  [self addRevertButton:&stringEdDefaultRevert
+           revertAction:@selector(stringDefaultRevertAction:)
+              setButton:&stringEdSet
+             setAction:@selector(stringSetAction:)
+           toContainer:container];
+  return container;
+}
+
+- (NSView *)makeNumberEditor
+{
+  const CGFloat cw = 300, ch = 80;
+  NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, cw, ch)];
+
+  numberEdField = [[NSTextField alloc] initWithFrame:
+    NSMakeRect(METRICS_SPACE_16,
+               ch - METRICS_SPACE_16 - METRICS_TEXT_INPUT_FIELD_HEIGHT,
+               cw - 2 * METRICS_SPACE_16, METRICS_TEXT_INPUT_FIELD_HEIGHT)];
+  [numberEdField setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
+  [numberEdField setDelegate:self];
+  [container addSubview:numberEdField];
+
+  [self addRevertButton:&numberEdDefaultRevert
+           revertAction:@selector(numberDefaultRevertAction:)
+              setButton:&numberEdSet
+             setAction:@selector(numberSetAction:)
+           toContainer:container];
+  return container;
+}
+
+- (NSView *)makeBoolEditor
+{
+  const CGFloat cw = 300, ch = 80;
+  NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, cw, ch)];
+
+  boolEdPopup = [[NSPopUpButton alloc] initWithFrame:
+    NSMakeRect(METRICS_SPACE_16,
+               ch - METRICS_SPACE_16 - METRICS_TEXT_INPUT_FIELD_HEIGHT,
+               cw - 2 * METRICS_SPACE_16, METRICS_TEXT_INPUT_FIELD_HEIGHT)];
+  [boolEdPopup addItemWithTitle:@"NO"];
+  [boolEdPopup addItemWithTitle:@"YES"];
+  [boolEdPopup setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
+  [boolEdPopup setTarget:self];
+  [boolEdPopup setAction:@selector(boolPopupAction:)];
+  [container addSubview:boolEdPopup];
+
+  [self addRevertButton:&boolEdDefaultRevert
+           revertAction:@selector(boolDefaultRevertAction:)
+              setButton:&boolEdSet
+             setAction:@selector(boolSetAction:)
+           toContainer:container];
+  return container;
+}
+
+- (NSView *)makeListEditor
+{
+  const CGFloat cw = 300, ch = 80;
+  NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, cw, ch)];
+
+  listEdPopup = [[NSPopUpButton alloc] initWithFrame:
+    NSMakeRect(METRICS_SPACE_16,
+               ch - METRICS_SPACE_16 - METRICS_TEXT_INPUT_FIELD_HEIGHT,
+               cw - 2 * METRICS_SPACE_16, METRICS_TEXT_INPUT_FIELD_HEIGHT)];
+  [listEdPopup addItemWithTitle:@"None"];
+  [listEdPopup setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
+  [listEdPopup setTarget:self];
+  [listEdPopup setAction:@selector(listPopupAction:)];
+  [container addSubview:listEdPopup];
+
+  [self addRevertButton:&listEdDefaultRevert
+           revertAction:@selector(listDefaultRevertAction:)
+              setButton:&listEdSet
+             setAction:@selector(listSetAction:)
+           toContainer:container];
+  return container;
+}
+
+- (NSView *)makeArrayEditor
+{
+  const CGFloat cw = 300, ch = 170;
+  const CGFloat pad = METRICS_SPACE_16;
+  const CGFloat miniW = 28;
+  const CGFloat miniH = METRICS_BUTTON_HEIGHT;
+  const CGFloat fieldY = ch - pad - METRICS_TEXT_INPUT_FIELD_HEIGHT;
+  const CGFloat rowY = METRICS_SPACE_12;
+  NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, cw, ch)];
+
+  arrayEdField = [[NSTextField alloc] initWithFrame:
+    NSMakeRect(pad, fieldY, cw - 2 * pad - miniW - METRICS_SPACE_8,
+               METRICS_TEXT_INPUT_FIELD_HEIGHT)];
+  [arrayEdField setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
+  [arrayEdField setDelegate:self];
+  [container addSubview:arrayEdField];
+
+  arrayEdAdd = [self miniButtonWithTitle:@"+"
+                                   frame:NSMakeRect(cw - pad - miniW, fieldY + 1,
+                                                    miniW, miniH)
+                                  action:@selector(arrayAddAction:)];
+  [arrayEdAdd setAutoresizingMask:NSViewMinXMargin | NSViewMinYMargin];
+  [container addSubview:arrayEdAdd];
+
+  arrayEdScroll = [self matrixListScrollWithFrame:
+    NSMakeRect(pad, rowY + miniH + METRICS_SPACE_8,
+               cw - 2 * pad,
+               fieldY - METRICS_SPACE_8 - rowY - miniH - METRICS_SPACE_8)
+                          action:@selector(arrayEdMatrixAction:)
+                       matrixOut:&arrayEdMatrix];
+  [arrayEdScroll setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+  [container addSubview:arrayEdScroll];
+
+  arrayEdRemove = [self miniButtonWithTitle:@"-"
+                                      frame:NSMakeRect(pad, rowY, miniW, miniH)
+                                     action:@selector(arrayRemoveAction:)];
+  [arrayEdRemove setAutoresizingMask:NSViewMaxYMargin];
+  [container addSubview:arrayEdRemove];
+
+  [self addRevertButton:&arrayEdDefaultRevert
+           revertAction:@selector(arrayDefaultRevertAction:)
+              setButton:&arrayEdSet
+             setAction:@selector(arraySetAction:)
+           toContainer:container];
+  return container;
+}
+
+/* Build the whole pane UI in code. Layout happens in
+   relayoutSubviewsForSize:, so controls are created here and only
+   positioned once that method runs at the end. */
+- (NSView *)createMainView
+{
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSBundle *bundle = [self bundle];
+  NSString *dictpath = [bundle pathForResource: @"Defaults" ofType: @"plist"];
+  NSDictionary *dict = [NSDictionary dictionaryWithContentsOfFile: dictpath];
+  NSArray *keys = [[dict allKeys] sortedArrayUsingSelector: @selector(compare:)];
+  NSUInteger i;
+
+  mainView = [[DefaultsMainView alloc] initWithFrame:NSMakeRect(0, 0, 640, 440)];
+  [(DefaultsMainView *)mainView setLayoutOwner:self];
+  [mainView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+
+  [defaults synchronize];
+  defaultsEntries = [NSMutableArray new];
+
+  for (i = 0; i < [keys count]; i++) {
+    NSString *defname = [keys objectAtIndex: i];
+    NSDictionary *info = [dict objectForKey: defname];
+    NSString *category = [info objectForKey: @"category"];
+    NSString *description;
+    NSArray *values = [info objectForKey: @"values"];
+    id defvalue = [info objectForKey: @"defaultvalue"];
+    int edtype = [[info objectForKey: @"editor"] intValue];
+    DefaultEntry *entry;
+
+    description = [bundle localizedStringForKey:defname value:@"Description not found" table:nil];
+    entry = [[DefaultEntry alloc] initWithUserDefaults: defaults
+                                              withName: defname
+                                            inCategory: category
+                                           description: description
+                                                values: values
+                                          defaultValue: defvalue
+                                            editorType: edtype];
+    [defaultsEntries addObject: entry];
+    RELEASE (entry);
   }
+
+  /* Search field across the top */
+  filterField = [[NSSearchField alloc] initWithFrame:NSZeroRect];
+  [filterField setDrawsBackground:NO];
+  [[filterField cell] setDrawsBackground:NO];
+  [[filterField cell] setBackgroundColor:[NSColor clearColor]];
+  [filterField setPlaceholderString:@"Search"];
+  [filterField setTarget:self];
+  [filterField setAction:@selector(filterDefaults:)];
+  [[filterField cell] setSendsActionOnEndEditing:NO];
+  [filterField setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
+  [mainView addSubview:filterField];
+
+  /* Names list on the left */
+  namesScroll = [self matrixListScrollWithFrame:NSZeroRect
+                                         action:@selector(namesMatrixAction:)
+                                      matrixOut:&namesMatrix];
+  [mainView addSubview:namesScroll];
+
+  /* Right column: category and description headers */
+  categoryLabel = [self labelWithText:[bundle localizedStringForKey:@"category"
+                                                              value:@"Category"
+                                                               table:nil]
+                                frame:NSZeroRect
+                            alignment:NSTextAlignmentRight];
+  [mainView addSubview:categoryLabel];
+
+  categoryField = [self labelWithText:@""
+                                frame:NSZeroRect
+                            alignment:NSTextAlignmentLeft];
+  [mainView addSubview:categoryField];
+
+  descriptionLabel = [self labelWithText:[bundle localizedStringForKey:@"description"
+                                                                 value:@"Description"
+                                                                  table:nil]
+                                   frame:NSZeroRect
+                               alignment:NSTextAlignmentLeft];
+  [mainView addSubview:descriptionLabel];
+
+  /* Description text sits directly between its header and the editor box */
+  descriptionView = [[NSTextView alloc] initWithFrame:NSZeroRect];
+  [descriptionView setFont:METRICS_FONT_SYSTEM_REGULAR_11];
+  [descriptionView setDrawsBackground:NO];
+  [descriptionView setEditable:NO];
+  [mainView addSubview:descriptionView];
+
+  /* Editor box at the bottom of the right column; its content view is
+     swapped between the five editors when an entry is selected */
+  editorBox = [[NSBox alloc] initWithFrame:NSZeroRect];
+  [editorBox setTitlePosition:NSNoTitle];
+  [editorBox setBoxType:NSBoxPrimary];
+  [editorBox setBorderType:NSBezelBorder];
+  [mainView addSubview:editorBox];
+
+  stringEditorBox = [self makeStringEditor];
+  boolEditorBox = [self makeBoolEditor];
+  numberEditorBox = [self makeNumberEditor];
+  listEditorBox = [self makeListEditor];
+  arrayEditorBox = [self makeArrayEditor];
+
+  /* Fill the names list */
+  for (i = 0; i < [defaultsEntries count]; i++) {
+    DefaultEntry *entry = [defaultsEntries objectAtIndex: i];
+    NSString *name = [entry name];
+    NSUInteger count = [[namesMatrix cells] count];
+
+    [namesMatrix insertRow: count];
+    [[namesMatrix cellAtRow: count column: 0] setStringValue: name];
+    [[namesMatrix cellAtRow: count column: 0] setLeaf: YES];
+  }
+  [namesMatrix sizeToCells];
+
+  currentEntry = nil;
+
+  [self relayoutSubviewsForSize:[mainView bounds].size];
+
+  [self disableControls];
+
+  return mainView;
+}
+
+/* Position everything for the given pane size. Called whenever the host
+   resizes the pane view; keeps side margins symmetric and rows
+   top-anchored, per AppearanceMetrics.h. */
+- (void)relayoutSubviewsForSize:(NSSize)size
+{
+  const CGFloat sideM = METRICS_CONTENT_SIDE_MARGIN;
+  const CGFloat topM = METRICS_CONTENT_TOP_MARGIN;
+  const CGFloat botM = METRICS_CONTENT_BOTTOM_MARGIN;
+  const CGFloat searchH = METRICS_TEXT_INPUT_FIELD_HEIGHT;
+  const CGFloat labelH = 18;
+  const CGFloat listW = 200;
+  const CGFloat labelGap = METRICS_SPACE_8;
+  const CGFloat catLabelW = 70;
+  const CGFloat editorH = 150;
+
+  if (mainView == nil || filterField == nil) {
+    return;
+  }
+
+  CGFloat searchY = size.height - topM - searchH;
+  [filterField setFrame:NSMakeRect(sideM, searchY, size.width - 2 * sideM, searchH)];
+
+  CGFloat colTop = searchY - METRICS_SPACE_16;
+  CGFloat colBot = botM;
+
+  /* Left column: names list fills from below the search field down to
+     the bottom margin */
+  [namesScroll setFrame:NSMakeRect(sideM, colBot, listW, colTop - colBot)];
+  if (namesMatrix != nil && [namesMatrix numberOfRows] > 0) {
+    NSSize cs = [namesMatrix cellSize];
+
+    cs.width = [namesScroll contentSize].width;
+    [namesMatrix setCellSize:cs];
+    [namesMatrix sizeToCells];
+  }
+
+  /* Right column */
+  CGFloat rightX = sideM + listW + METRICS_SPACE_16;
+  CGFloat rightW = size.width - sideM - rightX;
+  if (rightW < 0) {
+    rightW = 0;
+  }
+
+  CGFloat catY = colTop - labelH;
+  [categoryLabel setFrame:NSMakeRect(rightX, catY, catLabelW, labelH)];
+  [categoryField setFrame:NSMakeRect(rightX + catLabelW + labelGap, catY,
+                                     MAX(0, rightW - catLabelW - labelGap), labelH)];
+
+  CGFloat descLabelY = catY - labelGap - labelH;
+  [descriptionLabel setFrame:NSMakeRect(rightX, descLabelY, 120, labelH)];
+
+  CGFloat descTop = descLabelY - 4;
+  CGFloat descBottom = botM + editorH + METRICS_SPACE_8;
+  [descriptionView setFrame:NSMakeRect(rightX, descBottom, rightW,
+                                       MAX(0, descTop - descBottom))];
+
+  [editorBox setFrame:NSMakeRect(rightX, botM, rightW, editorH)];
 }
 
 - (DefaultEntry *)entryWithName:(NSString *)name
