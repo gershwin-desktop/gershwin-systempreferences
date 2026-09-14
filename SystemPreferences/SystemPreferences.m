@@ -272,7 +272,7 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
   [nc addObserver: self
          selector: @selector(searchFieldDidChange:)
              name: NSControlTextDidChangeNotification
-           object: nil];
+           object: searchField];
   // Set self as delegate so we can intercept ESC (cancelOperation:) when typing in the search box
   [searchField setDelegate: self];
 
@@ -284,6 +284,7 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
   NSTimeInterval t_start = [NSDate timeIntervalSinceReferenceDate];
 
   [window makeKeyAndOrderFront: nil];
+  [window makeFirstResponder: searchField];
   NSLog(@"[TIMER] makeKeyAndOrderFront: %.4fs  launching deferred pane load",
         [NSDate timeIntervalSinceReferenceDate] - t_start);
 
@@ -667,6 +668,9 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
       [searchField setStringValue: @""];
       // Make the search field visible again when the main icons view is shown
       [searchField setHidden: NO];
+      // Restore focus so keyboard input goes into the search field,
+      // not into whatever the pane had focused (which would crash).
+      [window makeFirstResponder: searchField];
     }
     [currentPane didUnselect];
 
@@ -722,6 +726,7 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
   if (searchField) {
     [searchField setHidden: NO];
     [searchField setStringValue: @""];
+    [window makeFirstResponder: searchField];
   }
   [window setTitle: @"System Preferences"];
   [window close];
