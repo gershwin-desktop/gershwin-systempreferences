@@ -29,6 +29,7 @@
 #import <AppKit/NSView.h>
 
 @class NSImage;
+@class SPPaneSearchTerms;
 
 @interface SPIcon : NSView
 {
@@ -44,6 +45,7 @@
   id pane;
   id prefapp;
   BOOL disabled;
+  SPPaneSearchTerms *searchTerms;
 }
 
 - (instancetype)initForPane:(id)apane
@@ -54,6 +56,9 @@
 - (BOOL)isDisabled;
 - (void)tile;
 - (NSString *)labelString;
+- (id)pane;
+- (void)setSearchTerms:(SPPaneSearchTerms *)terms;
+- (BOOL)matchesSearchString:(NSString *)searchString;
 
 @end
 

@@ -18,7 +18,8 @@ Resources/English.lproj
 SystemPreferences_OBJC_FILES = main.m \
 		  SystemPreferences.m \
                   SPIconsView.m \
-                  SPIcon.m
+                  SPIcon.m \
+                  SPPaneSearchTerms.m
 
 ifeq ($(findstring darwin, $(GNUSTEP_TARGET_OS)), darwin)
   ADDITIONAL_GUI_LIBS += -lGSPreferencePanes

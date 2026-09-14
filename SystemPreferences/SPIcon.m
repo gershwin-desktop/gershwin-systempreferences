@@ -4,6 +4,7 @@
 */
 
 #import "SPIcon.h"
+#import "SPPaneSearchTerms.h"
 #import "SystemPreferences.h"
 #import "PreferencePanes.h"
 
@@ -54,12 +55,33 @@ static inline double myrintf(double value)
   [labelLines release];
   [pane release];
   [prefapp release];
+  [searchTerms release];
   [super dealloc];
 }
 
 - (NSString *)labelString
 {
   return labelString;
+}
+
+- (id)pane
+{
+  return pane;
+}
+
+- (void)setSearchTerms:(SPPaneSearchTerms *)terms
+{
+  ASSIGN(searchTerms, terms);
+}
+
+- (BOOL)matchesSearchString:(NSString *)searchString
+{
+  if ([labelString rangeOfString: searchString
+                         options: NSCaseInsensitiveSearch].location != NSNotFound) {
+    return YES;
+  }
+
+  return [searchTerms matchesString: searchString];
 }
 
 - (BOOL)acceptsFirstMouse:(NSEvent *)theEvent
