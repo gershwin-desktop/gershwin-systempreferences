@@ -29,6 +29,7 @@
 #import "SystemPreferences.h"
 #import "SPIconsView.h"
 #import "SPIcon.h"
+#import "SPPaneSearchTerms.h"
 
 // Private libdispatch API for integrating the main queue with a foreign run loop.
 // Without this, blocks dispatched to dispatch_get_main_queue() from background
@@ -64,6 +65,8 @@ static void ensureCategoryRules(void)
 - (void)openPaneNamed:(NSString *)target;
 - (void)loadPaneBundlesAndCreateIcons;
 - (void)showCompatibilityAlertForPane:(id)pane;
+- (NSPreferencePane *)instanceForPaneBundle:(NSBundle *)bndl;
+- (void)indexPaneWidgetsIfNeeded;
 @end
 
 static SystemPreferences *systemPreferences = nil;
@@ -492,85 +495,133 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
     }
 }
 
+- (NSPreferencePane *)instanceForPaneBundle:(NSBundle *)bndl
+{
+  NSString *bid = [bndl bundleIdentifier];
+  NSPreferencePane *pane = [lazyPaneCache objectForKey: bid];
+
+  if (pane != nil) {
+    return pane;
+  }
+
+  NSTimeInterval t = [NSDate timeIntervalSinceReferenceDate];
+  volatile int saved_stderr = -1;
+  volatile int err_fd = -1;
+
+  /* Capture stderr during bundle loading to get the actual
+   * runtime error (e.g. "undefined symbol") */
+  saved_stderr = dup(STDERR_FILENO);
+  int pipefd[2];
+  if (pipe(pipefd) == 0)
+    {
+      err_fd = pipefd[0];
+      dup2(pipefd[1], STDERR_FILENO);
+      close(pipefd[1]);
+    }
+
+  NS_DURING
+    {
+      Class principalClass = [bndl principalClass];
+
+      /* Restore stderr */
+      if (saved_stderr >= 0)
+        {
+          dup2(saved_stderr, STDERR_FILENO);
+          close(saved_stderr);
+          saved_stderr = -1;
+        }
+
+      /* Read captured error output */
+      NSString *loadError = nil;
+      if (err_fd >= 0)
+        {
+          char buf[4096];
+          ssize_t n = read(err_fd, buf, sizeof(buf) - 1);
+          close(err_fd);
+          err_fd = -1;
+          if (n > 0)
+            {
+              buf[n] = '\0';
+              loadError = [NSString stringWithUTF8String: buf];
+            }
+        }
+
+      if (principalClass == nil)
+        {
+          NSString *msg = loadError ?: @"principal class is nil";
+          [NSException raise: NSGenericException
+                      format: @"%@", msg];
+        }
+      pane = [[principalClass alloc] initWithBundle: bndl];
+      // The cache cannot hold nil, and a nil pane has nothing to show.
+      if (pane == nil)
+        {
+          [NSException raise: NSGenericException
+                      format: @"initWithBundle: returned nil"];
+        }
+    }
+  NS_HANDLER
+    {
+      /* Ensure stderr is restored in the exception handler too */
+      if (saved_stderr >= 0)
+        {
+          dup2(saved_stderr, STDERR_FILENO);
+          close(saved_stderr);
+        }
+      if (err_fd >= 0)
+        {
+          close(err_fd);
+        }
+    }
+    NSLog(@"Failed to init pane %@: %@", bid, localException);
+    return nil;
+  NS_ENDHANDLER
+  NSLog(@"[TIMER]   lazy-init %@: %.4fs", bid, [NSDate timeIntervalSinceReferenceDate] - t);
+  [lazyPaneCache setObject: pane forKey: bid];
+  return [pane autorelease];
+}
+
+/* Pane labels rarely name the settings inside ("Scale Factor" lives in
+ * "Display"), so the search also matches the texts the panes' widgets
+ * show.  Those only exist once a pane's main view is built, which is why
+ * every pane is instantiated here; panes keep their system work in
+ * willSelect/didSelect, so building a view that is never shown is cheap.
+ * Done on the first search instead of at launch so that users who never
+ * search do not pay for loading every pane. */
+- (void)indexPaneWidgetsIfNeeded
+{
+  if (panesIndexed) {
+    return;
+  }
+  panesIndexed = YES;
+
+  NSTimeInterval t = [NSDate timeIntervalSinceReferenceDate];
+
+  for (SPIcon *icon in [iconsView allIcons]) {
+    // Incompatible panes must not run; they stay findable by label only.
+    if ([icon isDisabled]) {
+      continue;
+    }
+
+    NSPreferencePane *pane = [self instanceForPaneBundle: [icon pane]];
+    if (pane == nil) {
+      continue;
+    }
+
+    SPPaneSearchTerms *terms = [[SPPaneSearchTerms alloc] initWithView: [pane loadMainView]];
+    [icon setSearchTerms: terms];
+    RELEASE (terms);
+  }
+
+  NSLog(@"[TIMER] pane widget search index: %.4fs", [NSDate timeIntervalSinceReferenceDate] - t);
+}
+
 - (void)clickOnIconOfPane:(id)pane
 {
   if ([pane isKindOfClass: [NSBundle class]]) {
-    NSBundle *bndl = (NSBundle *)pane;
-    NSString *bid = [bndl bundleIdentifier];
-    NSPreferencePane *cached = [lazyPaneCache objectForKey: bid];
-
-    if (cached != nil) {
-      pane = cached;
-    } else {
-      NSTimeInterval t = [NSDate timeIntervalSinceReferenceDate];
-      volatile int saved_stderr = -1;
-      volatile int err_fd = -1;
-
-      /* Capture stderr during bundle loading to get the actual
-       * runtime error (e.g. "undefined symbol") */
-      saved_stderr = dup(STDERR_FILENO);
-      int pipefd[2];
-      if (pipe(pipefd) == 0)
-        {
-          err_fd = pipefd[0];
-          dup2(pipefd[1], STDERR_FILENO);
-          close(pipefd[1]);
-        }
-
-      NS_DURING
-        {
-          Class principalClass = [bndl principalClass];
-
-          /* Restore stderr */
-          if (saved_stderr >= 0)
-            {
-              dup2(saved_stderr, STDERR_FILENO);
-              close(saved_stderr);
-              saved_stderr = -1;
-            }
-
-          /* Read captured error output */
-          NSString *loadError = nil;
-          if (err_fd >= 0)
-            {
-              char buf[4096];
-              ssize_t n = read(err_fd, buf, sizeof(buf) - 1);
-              close(err_fd);
-              err_fd = -1;
-              if (n > 0)
-                {
-                  buf[n] = '\0';
-                  loadError = [NSString stringWithUTF8String: buf];
-                }
-            }
-
-          if (principalClass == nil)
-            {
-              NSString *msg = loadError ?: @"principal class is nil";
-              [NSException raise: NSGenericException
-                          format: @"%@", msg];
-            }
-          pane = [[principalClass alloc] initWithBundle: bndl];
-        }
-      NS_HANDLER
-        {
-          /* Ensure stderr is restored in the exception handler too */
-          if (saved_stderr >= 0)
-            {
-              dup2(saved_stderr, STDERR_FILENO);
-              close(saved_stderr);
-            }
-          if (err_fd >= 0)
-            {
-              close(err_fd);
-            }
-        }
-        NSLog(@"Failed to init pane %@: %@", bid, localException);
-        return;
-      NS_ENDHANDLER
-      NSLog(@"[TIMER]   lazy-init %@: %.4fs", bid, [NSDate timeIntervalSinceReferenceDate] - t);
-      [lazyPaneCache setObject: pane forKey: bid];
-      [pane autorelease];
+    pane = [self instanceForPaneBundle: (NSBundle *)pane];
+    if (pane == nil) {
+      return;
     }
   }
 
@@ -693,6 +744,10 @@ NSString * const kSystemPreferencesServiceName = @"io.github.gershwin-desktop.Sy
 
 - (void)searchFieldDidChange:(NSNotification *)notif
 {
+  if ([[searchField stringValue] length] > 0) {
+    [self indexPaneWidgetsIfNeeded];
+  }
+
   // Forward to icons view to trigger filtering immediately
   if ([iconsView respondsToSelector: @selector(searchFieldChanged:)]) {
     [iconsView searchFieldChanged: searchField];

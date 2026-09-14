@@ -55,6 +55,7 @@ extern NSString * const kSystemPreferencesServiceName;
   NSNotificationCenter *nc;
   NSMutableDictionary *lazyPaneCache;
   NSConnection *doConn;
+  BOOL panesIndexed;
 }
 
 + (id)systemPreferences;
