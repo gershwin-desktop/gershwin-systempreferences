@@ -1,6 +1,7 @@
 RPM_DISABLE_RELOCATABLE=YES
 
 include $(GNUSTEP_MAKEFILES)/common.make
+GNUSTEP_INSTALLATION_DOMAIN = SYSTEM
 
 PACKAGE_NAME = SystemPreferences
 APP_NAME = SystemPreferences
@@ -32,3 +33,4 @@ endif
 include $(GNUSTEP_MAKEFILES)/application.make
 
 -include GNUmakefile.postamble
+

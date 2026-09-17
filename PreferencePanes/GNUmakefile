@@ -1,6 +1,7 @@
 RPM_DISABLE_RELOCATABLE=YES
 
 include $(GNUSTEP_MAKEFILES)/common.make
+GNUSTEP_INSTALLATION_DOMAIN = SYSTEM
 include Version
 
 ifeq ($(findstring darwin, $(GNUSTEP_TARGET_OS)), darwin)
@@ -30,3 +31,4 @@ include $(GNUSTEP_MAKEFILES)/framework.make
 include $(GNUSTEP_MAKEFILES)/aggregate.make
 
 -include GNUmakefile.postamble
+

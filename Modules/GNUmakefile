@@ -1,15 +1,12 @@
 RPM_DISABLE_RELOCATABLE=YES
 
 include $(GNUSTEP_MAKEFILES)/common.make
+GNUSTEP_INSTALLATION_DOMAIN = SYSTEM
 
 SUBPROJECTS = \
         TimeZone \
-        Volumes \
-        FileSystem \
         ModifierKeys \
-        Fonts \
         Defaults \
-	Themes \
 	Internet
 
 -include GNUmakefile.preamble
@@ -19,4 +16,5 @@ SUBPROJECTS = \
 include $(GNUSTEP_MAKEFILES)/aggregate.make
 
 -include GNUmakefile.postamble
+
 

@@ -27,6 +27,8 @@
 
 @implementation FileSystem
 
++ (BOOL)isCompatible { return YES; }
+
 - (void)dealloc
 {
 	[super dealloc];

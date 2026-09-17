@@ -4,8 +4,11 @@
 #include "SPIcon.h"
 
 #define ICONW 56
-#define ICONH 64
+#define ICONH 52
 #define CONTENT_MARGIN 12
+// Side margin matches METRICS_CONTENT_SIDE_MARGIN (24) used by the panes,
+// so the start page aligns with the preference panes at the window edges.
+#define SIDE_MARGIN 24
 // TOP_MARGIN controls the top whitespace before the first header/separator. Set so
 #define TOP_MARGIN 0
 #define HEADER_HEIGHT 14
@@ -164,8 +167,26 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
   [separatorsY removeAllObjects];
   // Use TOP_MARGIN so the first separator is positioned to match toolbar vertical spacing
   float y = bounds.size.height - TOP_MARGIN;
-  float width = fmaxf(bounds.size.width - CONTENT_MARGIN * 2, ICONW);
+  /* GNUstep sizes the box content view 5px wider than the window content.
+     Layout against the window content width so the icon grid padding to the
+     window edges stays symmetric and matches the pref panes (SIDE_MARGIN). */
+  float availW = bounds.size.width;
+  NSWindow *layoutWin = [self window];
+  if (layoutWin) {
+    availW = [[layoutWin contentView] frame].size.width;
+  }
+  float width = fmaxf(availW - SIDE_MARGIN * 2, ICONW);
   int iconsPerRow = MAX(1, (int)((width + ICON_HORIZONTAL_SPACING) / (ICONW + ICON_HORIZONTAL_SPACING)));
+  /* Spread the icons so the row exactly fills the SIDE_MARGIN-limited area:
+     equal padding (24) at both window edges, matching the pref panes. */
+  float hSpacing = ICON_HORIZONTAL_SPACING;
+  if (iconsPerRow > 1) {
+    float avail = width - iconsPerRow * ICONW;
+    if (avail > (iconsPerRow - 1) * ICON_HORIZONTAL_SPACING) {
+      hSpacing = avail / (iconsPerRow - 1);
+    }
+  }
+  float iconStartX = SIDE_MARGIN;
   NSArray *categories = [self orderedVisibleCategoryNames];
 
   NSUInteger catCount = [categories count];
@@ -181,7 +202,7 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
     float headerHeight = HEADER_HEIGHT;
     // Shift category labels 3px downwards for improved visual spacing
     float headerY = y - headerHeight - 3;
-    header.frame = NSMakeRect(CONTENT_MARGIN, headerY, width, headerHeight);
+    header.frame = NSMakeRect(SIDE_MARGIN, headerY, width, headerHeight);
     y = headerY - HEADER_ICON_GAP;
 
     // For the very first category, add a separator ABOVE the header
@@ -199,7 +220,7 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
       SPIcon *icon = [icons objectAtIndex: idx];
       int row = idx / iconsPerRow;
       int col = idx % iconsPerRow;
-      float iconX = CONTENT_MARGIN + col * (ICONW + ICON_HORIZONTAL_SPACING);
+      float iconX = iconStartX + col * (ICONW + hSpacing);
       float iconY = iconRowBaseY - row * (ICONH + ICON_VERTICAL_SPACING);
       [icon setHidden: NO];
       [icon setFrame: NSMakeRect(iconX, iconY, ICONW, ICONH)];
@@ -251,6 +272,18 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
   isTiling = NO;
   
   [self setNeedsDisplay: YES];
+}
+
+- (void)viewDidMoveToWindow
+{
+  [super viewDidMoveToWindow];
+  if ([self window] && [self superview]) {
+    /* The host window sizes the content view 5px wider than the box
+       (GNUstep NSBox contentView quirk).  Make the icons view exactly fill
+       its superview so the icon grid margins to the window edges stay
+       symmetric.  setFrame: re-tiles on the size change. */
+    [self setFrame: [[self superview] bounds]];
+  }
 }
 
 - (void)setFrame:(NSRect)frameRect

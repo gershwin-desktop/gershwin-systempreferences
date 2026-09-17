@@ -24,6 +24,8 @@
 
 @implementation FontModule
 
++ (BOOL)isCompatible { return YES; }
+
 - (void)mainViewDidLoad
 {
   fontKeys = [[NSArray arrayWithObjects: @"NSFont", @"NSLabelFont",

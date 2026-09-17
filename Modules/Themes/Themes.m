@@ -28,6 +28,13 @@
 
 @implementation Themes
 
++ (BOOL)isCompatible {
+  return [[NSFileManager defaultManager] fileExistsAtPath: @"/System/Library/Themes"];
+}
+
++ (NSString *)compatibilityReason {
+  return @"No theme engine found";
+}
 
 
 - (void)mainViewDidLoad

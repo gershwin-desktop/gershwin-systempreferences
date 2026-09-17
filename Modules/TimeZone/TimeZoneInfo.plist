@@ -4,6 +4,6 @@
   NSExecutable = TimeZone;
   NSMainNibFile = TimeZone;
   NSPrefPaneIconFile = "TimeZone.tiff";
-  NSPrefPaneIconLabel = "Date & Time";
+  NSPrefPaneIconLabel = "Date and Time";
   NSPrincipalClass = TimeZone;
 }
