@@ -16,6 +16,14 @@ static const CGFloat kLabelPadding = 2.0;
 static const CGFloat kLabelLineSpacing = 0.5;  // reduced for tighter labels
 static const CGFloat kLabelFontSize = 10.0;
 
+/* An icon label is the case the Human Interface Guidelines mean by limited
+ * space, so it is set in the label font rather than in the system font: with a
+ * theme that draws a wide system font the name would otherwise be cut short. */
+static NSDictionary *SPIconLabelAttributes(void)
+{
+  return @{NSFontAttributeName:[NSFont labelFontOfSize:kLabelFontSize]};
+}
+
 static inline double myrintf(double value)
 {
   return floor(value + 0.5);
@@ -104,7 +112,7 @@ static inline double myrintf(double value)
   labelLines = [lines retain];
 
   CGFloat textHeight = 0.0;
-  NSDictionary *attributes = @{NSFontAttributeName:[NSFont systemFontOfSize:kLabelFontSize]};
+  NSDictionary *attributes = SPIconLabelAttributes();
   for (NSString *line in labelLines) {
     NSSize textSize = [line sizeWithAttributes:attributes];
     textHeight += textSize.height;
@@ -124,7 +132,7 @@ static inline double myrintf(double value)
     return @[];
   }
 
-  NSDictionary *attributes = @{NSFontAttributeName:[NSFont systemFontOfSize:kLabelFontSize]};
+  NSDictionary *attributes = SPIconLabelAttributes();
   NSString *line = label;
 
   /* Single line, truncated with an ellipsis when it does not fit. */
@@ -174,8 +182,9 @@ static inline double myrintf(double value)
 
   NSColor *textColor = disabled ? [NSColor disabledControlTextColor] : [NSColor labelColor];
   if (labelLines.count) {
-    NSDictionary *attributes = @{NSFontAttributeName:[NSFont systemFontOfSize:kLabelFontSize],
-                                 NSForegroundColorAttributeName:textColor};
+    NSMutableDictionary *attributes =
+      [[SPIconLabelAttributes() mutableCopy] autorelease];
+    [attributes setObject:textColor forKey:NSForegroundColorAttributeName];
     CGFloat labelY = NSMinY(iconRect) - kLabelPadding;
     for (NSString *line in labelLines) {
       CGSize textSize = [line sizeWithAttributes:attributes];
@@ -213,7 +222,7 @@ static inline double myrintf(double value)
 
 - (NSSize)sizeThatFits:(NSSize)size
 {
-  NSDictionary *attributes = @{NSFontAttributeName:[NSFont systemFontOfSize:kLabelFontSize]};
+  NSDictionary *attributes = SPIconLabelAttributes();
   CGFloat totalHeight = kIconTopPadding + icnSize.height + kIconBottomMargin;
   if (labelLines.count) {
     CGFloat labelHeight = 0;
