@@ -204,6 +204,15 @@
     [domain setObject:themeName
                forKey: @"GSTheme"];
   [defaults setPersistentDomain: domain forName: NSGlobalDomain];
+  [defaults synchronize];
+
+  /* Without this the applications already running only notice the new theme
+     the next time they re-read the defaults by themselves, which is once
+     every half minute.  GSTheme listens for this notification and re-reads
+     the defaults the moment it arrives. */
+  [[NSDistributedNotificationCenter defaultCenter]
+    postNotificationName: @"GSThemePreferenceDidChangeNotification"
+                  object: nil];
 }
 
 
