@@ -39,6 +39,8 @@
 
 - (void)addIcon:(SPIcon *)icon forCategory:(NSString *)category;
 
+- (NSArray *)allIcons;
+
 - (void)tile;
 
 - (void)searchFieldChanged:(id)sender;

@@ -332,6 +332,17 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
   [path stroke];
 }
 
+- (NSArray *)allIcons
+{
+  NSMutableArray *icons = [NSMutableArray array];
+
+  for (NSArray *categoryIcons in [allIconsByCategory allValues]) {
+    [icons addObjectsFromArray: categoryIcons];
+  }
+
+  return icons;
+}
+
 - (void)searchFieldChanged:(id)sender
 {
   NSString *searchString = [sender stringValue];
@@ -340,23 +351,14 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
 
 - (void)filterIconsWithString:(NSString *)searchString
 {
-  NSString *normalized = nil;
-
-  if (searchString && [searchString length] > 0) {
-    normalized = [searchString lowercaseString];
-  }
+  BOOL filtering = ([searchString length] > 0);
 
   [visibleIconsByCategory removeAllObjects];
 
   for (NSString *category in [allIconsByCategory allKeys]) {
     NSMutableArray *matches = [NSMutableArray array];
     for (SPIcon *icon in [allIconsByCategory objectForKey: category]) {
-      BOOL visible = YES;
-
-      if (normalized) {
-        NSString *label = [[icon labelString] lowercaseString];
-        visible = ([label rangeOfString: normalized].location != NSNotFound);
-      }
+      BOOL visible = (!filtering || [icon matchesSearchString: searchString]);
 
       [icon setHidden: !visible];
 
@@ -371,7 +373,7 @@ static NSArray<NSString *> *preferredCategoryOrder(void)
   }
 
   // If the search string is empty, ensure all icons are visible.
-  if (!normalized) {
+  if (!filtering) {
     [self showAllIcons];
     return;
   }

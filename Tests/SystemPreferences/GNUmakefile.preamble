@@ -1,0 +1,7 @@
+GNUSTEP_INSTALLATION_DOMAIN = SYSTEM
+# The test compiles the .m under test in-process, so it needs the
+# SystemPreferences headers.
+ADDITIONAL_INCLUDE_DIRS += -I../../SystemPreferences
+
+# SPPaneSearchTerms walks AppKit views.
+t_SPPaneSearchTerms_TOOL_LIBS += -lgnustep-gui
