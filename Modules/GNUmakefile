@@ -7,6 +7,7 @@ SUBPROJECTS = \
         TimeZone \
         ModifierKeys \
         Defaults \
+	Dock \
 	Internet
 
 -include GNUmakefile.preamble

@@ -1,0 +1,8 @@
+
+{
+  CFBundleIdentifier = io.github.gershwin-desktop.dockprefs;
+  NSExecutable = Dock;
+  NSPrefPaneIconFile = "Dock.tiff";
+  NSPrefPaneIconLabel = Dock;
+  NSPrincipalClass = DockPreferences;
+}
