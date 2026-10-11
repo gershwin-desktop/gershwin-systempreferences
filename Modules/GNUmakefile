@@ -4,6 +4,7 @@ include $(GNUSTEP_MAKEFILES)/common.make
 GNUSTEP_INSTALLATION_DOMAIN = SYSTEM
 
 SUBPROJECTS = \
+	DesktopBackground \
         TimeZone \
         ModifierKeys \
         Defaults \
