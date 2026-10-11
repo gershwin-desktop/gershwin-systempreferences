@@ -2,7 +2,7 @@
     NSIcon = "SystemPreferences.tiff";
     ApplicationDescription = "GNUstep System Preferences";
     ApplicationIcon = "SystemPreferences.tiff";
-    ApplicationName = SystemPreferences;
+    ApplicationName = "System Preferences";
     CFBundleIdentifier = org.gnustep.SystemPreferences;
     ApplicationRelease = "1.2.0";
     Authors = (
