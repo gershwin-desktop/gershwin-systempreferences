@@ -1,0 +1,7 @@
+{
+  CFBundleIdentifier = io.github.gershwin-desktop.desktopbackgroundprefs;
+  NSExecutable = DesktopBackground;
+  NSPrefPaneIconFile = "DesktopBackground.tiff";
+  NSPrefPaneIconLabel = "Desktop Background";
+  NSPrincipalClass = DesktopBackgroundPreferences;
+}

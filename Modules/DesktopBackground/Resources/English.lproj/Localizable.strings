@@ -1,0 +1,13 @@
+/* labels of the Desktop Background preference pane */
+
+"Desktop Background" = "Desktop Background";
+"Color:" = "Color:";
+"Use Image" = "Use Image";
+"Image:" = "Image:";
+"Choose..." = "Choose...";
+"None" = "None";
+"Style:" = "Style:";
+"Center" = "Center";
+"Fit" = "Fit";
+"Tile" = "Tile";
+"Scale" = "Scale";
