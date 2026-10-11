@@ -1,0 +1,12 @@
+/* labels of the Dock preference pane */
+
+"Dock" = "Dock";
+"Show Dock" = "Show Dock";
+"Position:" = "Position:";
+"Left" = "Left";
+"Bottom" = "Bottom";
+"Right" = "Right";
+"Style:" = "Style:";
+"Classic" = "Classic";
+"Modern" = "Modern";
+"Magnification" = "Magnification";
